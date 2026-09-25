@@ -1,5 +1,3 @@
-// TypeScript cannot resolve the JSX runtime in this environment; Next.js resolves it at build time.
-// @ts-nocheck
 import { createClient } from "@/lib/supabase/server";
 
 export default async function Home() {
