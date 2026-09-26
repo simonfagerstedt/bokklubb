@@ -16,9 +16,14 @@ export default async function Home() {
         </h1>
 
         {user ? (
-          <p className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
-            Välkommen till Vickleby bokcirkel {displayName}!
-          </p>
+          <>
+            <p className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
+              Välkommen till Vickleby bokcirkel {displayName}!
+            </p>
+            <a href="/account/password" className="text-sm text-zinc-600 underline dark:text-zinc-400">
+              Set or change password
+            </a>
+          </>
         ) : (
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
             Not signed in —{" "}

@@ -1,14 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  async function sendMagicLink(e: React.FormEvent) {
+  async function signInWithPassword(e: React.FormEvent) {
     e.preventDefault();
+    const supabase = createClient();
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      setStatus("error");
+      setErrorMsg(error.message);
+    } else {
+      router.push("/");
+      router.refresh();
+    }
+  }
+
+  async function sendMagicLink() {
+    if (!email) {
+      setStatus("error");
+      setErrorMsg("Enter your email address first.");
+      return;
+    }
     const supabase = createClient();
 
     const { error } = await supabase.auth.signInWithOtp({
@@ -18,7 +41,12 @@ export default function LoginPage() {
       },
     });
 
-    setStatus(error ? "error" : "sent");
+    if (error) {
+      setStatus("error");
+      setErrorMsg(error.message);
+    } else {
+      setStatus("sent");
+    }
   }
 
   return (
@@ -30,26 +58,43 @@ export default function LoginPage() {
           Check {email} for a sign-in link.
         </p>
       ) : (
-        <form onSubmit={sendMagicLink} className="flex flex-col gap-3 w-full max-w-sm">
+        <form onSubmit={signInWithPassword} className="flex flex-col gap-3 w-full max-w-sm">
           <input
             type="email"
             required
+            autoComplete="email"
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="rounded border border-neutral-300 px-3 py-2 dark:border-neutral-700"
           />
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="Password (if you've set one)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="rounded border border-neutral-300 px-3 py-2 dark:border-neutral-700"
+          />
           <button
             type="submit"
-            className="rounded bg-black px-3 py-2 text-white dark:bg-white dark:text-black"
+            disabled={!password}
+            className="rounded bg-black px-3 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          >
+            Sign in with password
+          </button>
+
+          <div className="text-center text-xs text-neutral-400">or</div>
+
+          <button
+            type="button"
+            onClick={sendMagicLink}
+            className="rounded border border-neutral-300 px-3 py-2 dark:border-neutral-700"
           >
             Send magic link
           </button>
-          {status === "error" && (
-            <p className="text-sm text-red-500">
-              Something went wrong. Check your Supabase env vars and try again.
-            </p>
-          )}
+
+          {status === "error" && <p className="text-sm text-red-500">{errorMsg}</p>}
         </form>
       )}
     </main>
