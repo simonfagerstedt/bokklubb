@@ -13,6 +13,31 @@ async function requireMember() {
   return { supabase, userId: user.id };
 }
 
+/**
+ * `<input type="date">` should only ever submit "YYYY-MM-DD", but some
+ * browsers (Safari in particular) let extra digits leak into the year
+ * segment if you type quickly, producing things like "202601-01-07" — a
+ * 6-digit "year" that Postgres rejects with an opaque "time zone
+ * displacement out of range" error. Validate defensively and fail with a
+ * clear message instead.
+ */
+function parseFinishedAt(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) throw new Error(`That doesn't look like a valid date: "${trimmed}".`);
+  const year = Number(match[1]);
+  const currentYear = new Date().getFullYear();
+  if (year < 1000 || year > currentYear + 1) {
+    throw new Error(`That date's year (${year}) looks wrong — please re-enter it.`);
+  }
+  const date = new Date(`${trimmed}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`That doesn't look like a valid date: "${trimmed}".`);
+  }
+  return date.toISOString();
+}
+
 async function requireAdmin() {
   const { supabase, userId } = await requireMember();
   const { data: member } = await supabase
@@ -30,6 +55,11 @@ export async function addSuggestion(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const author = String(formData.get("author") ?? "").trim();
   const pitch = String(formData.get("pitch") ?? "").trim();
+  const coverUrl = String(formData.get("cover_url") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const originalTitle = String(formData.get("original_title") ?? "").trim();
+  const publishedYearRaw = String(formData.get("published_year") ?? "").trim();
+  const publishedYear = publishedYearRaw ? Number(publishedYearRaw) : null;
   if (!title || !author) return;
 
   const { error } = await supabase.from("books").insert({
@@ -38,6 +68,11 @@ export async function addSuggestion(formData: FormData) {
     pitch: pitch || null,
     status: "suggested",
     added_by: userId,
+    cover_url: coverUrl || null,
+    description: description || null,
+    original_title: originalTitle || null,
+    published_year:
+      publishedYear && Number.isFinite(publishedYear) ? publishedYear : null,
   });
   if (error) throw new Error(error.message);
 
@@ -184,10 +219,9 @@ export async function updateBookDetails(bookId: string, formData: FormData) {
 
   // Only present on the "read" books' edit form — don't touch it otherwise.
   if (formData.has("finished_at")) {
-    const finishedAtRaw = String(formData.get("finished_at") ?? "").trim();
-    updates.finished_at = finishedAtRaw
-      ? new Date(finishedAtRaw).toISOString()
-      : null;
+    updates.finished_at = parseFinishedAt(
+      String(formData.get("finished_at") ?? ""),
+    );
   }
 
   const { error } = await supabase
@@ -209,12 +243,11 @@ export async function addReadBook(formData: FormData) {
   const originalTitle = String(formData.get("original_title") ?? "").trim();
   const publishedYearRaw = String(formData.get("published_year") ?? "").trim();
   const publishedYear = publishedYearRaw ? Number(publishedYearRaw) : null;
-  const finishedAtRaw = String(formData.get("finished_at") ?? "").trim();
   if (!title || !author) return;
 
-  const finishedAt = finishedAtRaw
-    ? new Date(finishedAtRaw).toISOString()
-    : new Date().toISOString();
+  const finishedAt =
+    parseFinishedAt(String(formData.get("finished_at") ?? "")) ??
+    new Date().toISOString();
 
   const { error } = await supabase.from("books").insert({
     title,
@@ -236,6 +269,61 @@ export async function addReadBook(formData: FormData) {
 export async function deleteBook(bookId: string) {
   const { supabase } = await requireAdmin();
   const { error } = await supabase.from("books").delete().eq("id", bookId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+}
+
+export async function addBackgroundCover(formData: FormData) {
+  const { supabase, userId } = await requireAdmin();
+
+  const coverUrl = String(formData.get("cover_url") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  if (!coverUrl) return;
+
+  const { data: existing, error: maxError } = await supabase
+    .from("background_covers")
+    .select("position")
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (maxError) throw new Error(maxError.message);
+
+  const { error } = await supabase.from("background_covers").insert({
+    position: (existing?.position ?? 0) + 1,
+    cover_url: coverUrl,
+    title: title || null,
+    added_by: userId,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/");
+}
+
+export async function replaceBackgroundCover(
+  coverId: string,
+  formData: FormData,
+) {
+  const { supabase } = await requireAdmin();
+
+  const coverUrl = String(formData.get("cover_url") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  if (!coverUrl) return;
+
+  const { error } = await supabase
+    .from("background_covers")
+    .update({ cover_url: coverUrl, title: title || null })
+    .eq("id", coverId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/");
+}
+
+export async function deleteBackgroundCover(coverId: string) {
+  const { supabase } = await requireAdmin();
+  const { error } = await supabase
+    .from("background_covers")
+    .delete()
+    .eq("id", coverId);
   if (error) throw new Error(error.message);
   revalidatePath("/");
 }

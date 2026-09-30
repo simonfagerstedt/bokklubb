@@ -11,20 +11,29 @@ import {
   hideSuggestion,
   unhideSuggestion,
   deleteBook,
+  addBackgroundCover,
+  replaceBackgroundCover,
+  deleteBackgroundCover,
   signOut,
 } from "./actions";
 import { ConfirmSubmitForm } from "./ConfirmSubmitForm";
+import { AddReadBookForm } from "./AddReadBookForm";
+import { BackgroundCoverAdmin } from "./BackgroundCoverAdmin";
+import { FinishedAtField } from "./FinishedAtField";
+import { SuggestBookForm } from "./SuggestBookForm";
 
 type Member = { id: string; display_name: string | null; is_admin: boolean };
+type BackgroundCover = { id: string; cover_url: string; title: string | null };
 type Review = {
   id: string;
   rating: number;
   body: string | null;
   member_id: string;
 };
-// A mix of classics and modern reads, faded into a background collage —
-// not tied to what the club is actually reading.
-const BACKGROUND_COVERS = [
+// Fallback if the background_covers table is ever empty (e.g. an admin
+// removed everything) — a mix of classics and modern reads, not tied to
+// what the club is actually reading.
+const FALLBACK_BACKGROUND_COVERS = [
   "https://covers.openlibrary.org/b/id/8467127-L.jpg", // Pride and Prejudice
   "https://covers.openlibrary.org/b/id/12927145-L.jpg", // Circe
   "https://covers.openlibrary.org/b/id/106239-L.jpg", // Moby-Dick
@@ -63,12 +72,13 @@ type Book = {
   created_at: string;
 };
 
-function BookCoverBackground() {
+function BookCoverBackground({ covers }: { covers: string[] }) {
   // Tile the cover list into a fixed, full-viewport grid behind everything,
   // faded and desaturated so it reads as texture rather than content.
+  const source = covers.length > 0 ? covers : FALLBACK_BACKGROUND_COVERS;
   const tiles = Array.from(
     { length: 30 },
-    (_, i) => BACKGROUND_COVERS[i % BACKGROUND_COVERS.length],
+    (_, i) => source[i % source.length],
   );
 
   return (
@@ -139,19 +149,13 @@ function BookEditForm({ book }: { book: Book }) {
           className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
         />
         {book.status === "read" && (
-          <label className="col-span-2 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 sm:col-span-1">
-            Finished on
-            <input
-              name="finished_at"
-              type="date"
-              defaultValue={
-                book.finished_at
-                  ? new Date(book.finished_at).toISOString().slice(0, 10)
-                  : ""
-              }
-              className="flex-1 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </label>
+          <FinishedAtField
+            defaultValue={
+              book.finished_at
+                ? new Date(book.finished_at).toISOString().slice(0, 10)
+                : ""
+            }
+          />
         )}
       </form>
       <div className="col-span-2 flex items-center gap-2">
@@ -206,6 +210,7 @@ export default async function Home() {
     { data: members },
     { data: reviews },
     { data: votes },
+    { data: backgroundCovers },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase
@@ -220,6 +225,10 @@ export default async function Home() {
       .select("id, book_id, rating, body, member_id")
       .order("created_at", { ascending: false }),
     supabase.from("suggestion_votes").select("book_id, member_id"),
+    supabase
+      .from("background_covers")
+      .select("id, cover_url, title")
+      .order("position", { ascending: true }),
   ]);
 
   const user = userData.user;
@@ -232,6 +241,8 @@ export default async function Home() {
     me?.display_name ??
     user?.email;
   const isAdmin = me?.is_admin ?? false;
+
+  const covers = (backgroundCovers ?? []) as BackgroundCover[];
 
   const allBooks = (books ?? []) as Book[];
   const current = allBooks.find((b) => b.status === "current");
@@ -267,7 +278,7 @@ export default async function Home() {
 
   return (
     <div className="relative min-h-screen font-sans">
-      <BookCoverBackground />
+      <BookCoverBackground covers={covers.map((c) => c.cover_url)} />
 
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
@@ -446,23 +457,33 @@ export default async function Home() {
                     key={book.id}
                     className="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
                   >
-                    <div>
-                      <p className="font-medium text-zinc-900 dark:text-zinc-50">
-                        {book.title}{" "}
-                        <span className="font-normal text-zinc-500 dark:text-zinc-400">
-                          — {book.author}
-                        </span>
-                      </p>
-                      {book.pitch && (
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                          {book.pitch}
-                        </p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      {book.cover_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={book.cover_url}
+                          alt={`Cover of ${book.title}`}
+                          className="h-16 w-11 shrink-0 rounded object-cover shadow-sm"
+                        />
                       )}
-                      {suggestedBy && (
-                        <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                          suggested by {suggestedBy}
+                      <div className="min-w-0">
+                        <p className="font-medium text-zinc-900 dark:text-zinc-50">
+                          {book.title}{" "}
+                          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                            — {book.author}
+                          </span>
                         </p>
-                      )}
+                        {book.pitch && (
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                            {book.pitch}
+                          </p>
+                        )}
+                        {suggestedBy && (
+                          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                            suggested by {suggestedBy}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {user ? (
@@ -519,33 +540,7 @@ export default async function Home() {
           </ul>
 
           {user ? (
-            <form
-              action={addSuggestion}
-              className="mt-3 flex flex-col gap-2 rounded-lg border border-dashed border-zinc-300 p-4 dark:border-zinc-700"
-            >
-              <div className="flex gap-2">
-                <input
-                  name="title"
-                  placeholder="Title"
-                  required
-                  className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                />
-                <input
-                  name="author"
-                  placeholder="Author"
-                  required
-                  className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                />
-              </div>
-              <input
-                name="pitch"
-                placeholder="Why should we read it? (optional)"
-                className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              />
-              <button className="self-start rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
-                Suggest a book
-              </button>
-            </form>
+            <SuggestBookForm action={addSuggestion} />
           ) : (
             <p className="mt-3 text-sm text-zinc-500">
               <a href="/login" className="underline">
@@ -735,58 +730,7 @@ export default async function Home() {
               <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
                 Add a book you&apos;ve already read
               </summary>
-              <form
-                action={addReadBook}
-                className="mt-3 grid grid-cols-2 gap-2 text-sm"
-              >
-                <input
-                  name="title"
-                  placeholder="Title"
-                  required
-                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
-                />
-                <input
-                  name="author"
-                  placeholder="Author"
-                  required
-                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
-                />
-                <input
-                  name="cover_url"
-                  placeholder="Cover image URL"
-                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-                />
-                <input
-                  name="original_title"
-                  placeholder="Original title (optional)"
-                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
-                />
-                <input
-                  name="published_year"
-                  type="number"
-                  placeholder="Year"
-                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
-                />
-                <textarea
-                  name="description"
-                  placeholder="Description"
-                  rows={2}
-                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-                />
-                <label className="col-span-2 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 sm:col-span-1">
-                  Finished on
-                  <input
-                    name="finished_at"
-                    type="date"
-                    className="flex-1 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-                  />
-                </label>
-                <div className="col-span-2">
-                  <button className="rounded bg-black px-3 py-1.5 text-white dark:bg-white dark:text-black">
-                    Add book
-                  </button>
-                </div>
-              </form>
+              <AddReadBookForm action={addReadBook} />
             </details>
           )}
         </section>
@@ -819,6 +763,25 @@ export default async function Home() {
             </p>
           )}
         </section>
+
+        {/* Background images (admin only) */}
+        {isAdmin && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+              Background images
+            </h2>
+            <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
+              The faded cover collage behind the page. Search Open Library to
+              replace any of these, or add more.
+            </p>
+            <BackgroundCoverAdmin
+              covers={covers}
+              addAction={addBackgroundCover}
+              replaceAction={replaceBackgroundCover}
+              deleteAction={deleteBackgroundCover}
+            />
+          </section>
+        )}
       </main>
     </div>
   );

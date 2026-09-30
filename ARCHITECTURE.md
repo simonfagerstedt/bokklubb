@@ -1,4 +1,4 @@
-# Vickleby bokcirkel — Technical Overview
+# Bokcirkeln — Technical Overview
 
 A Next.js app on Cloudflare Workers with Supabase for auth and data, deployed
 automatically from GitHub Actions on every push to `main`.
@@ -23,9 +23,9 @@ Next.js app, never directly to Supabase.
 
 ## Database schema
 
-Five tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
+Six tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
 project, all with row level security on (public read, writes scoped to the
-acting member).
+acting member or admin-only).
 
 ### members
 
@@ -75,6 +75,23 @@ edits upsert).
 
 Composite primary key — one vote per member per suggestion.
 
+### background_covers
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | uuid, PK | |
+| position | integer | display order in the collage |
+| cover_url | text | |
+| title | text, nullable | caption, e.g. from Open Library |
+| added_by | uuid, FK → members, nullable | |
+| created_at | timestamptz | |
+
+The faded book-cover collage behind the page. Public read; only admins can
+add, replace or delete covers (RLS + `requireAdmin` in the Server Actions),
+via the "Background images" panel at the bottom of the page. Seeded with the
+covers that used to be hardcoded in `page.tsx`; if ever emptied, the page
+falls back to that original hardcoded list rather than showing nothing.
+
 ### notes
 
 The original scaffold's starter table (title + created_at). Still present,
@@ -109,9 +126,16 @@ to every signed-in member.
 
 | Path | What it does |
 | --- | --- |
-| `src/app/page.tsx` | The whole club page — currently reading, suggestions, books read, members — plus the faded book-cover background |
-| `src/app/actions.ts` | Server Actions: `addSuggestion`, `toggleVote`, `addReview`, `deleteReview`, `markAsCurrent`, `finishCurrentBook`, `updateBookDetails`, `addReadBook`, `hideSuggestion`, `unhideSuggestion`, `deleteBook`, `signOut` |
-| `src/app/ConfirmSubmitForm.tsx` | Confirm-before-submit wrapper used for the delete-book button |
+| `src/app/page.tsx` | The whole club page — currently reading, suggestions, books read, members, background-images admin panel — plus the faded book-cover background |
+| `src/app/actions.ts` | Server Actions: `addSuggestion`, `toggleVote`, `addReview`, `deleteReview`, `markAsCurrent`, `finishCurrentBook`, `updateBookDetails`, `addReadBook`, `hideSuggestion`, `unhideSuggestion`, `deleteBook`, `addBackgroundCover`, `replaceBackgroundCover`, `deleteBackgroundCover`, `signOut` |
+| `src/app/SuggestBookForm.tsx`, `src/app/AddReadBookForm.tsx` | Client components for the two "add a book" forms; each clears itself (via a remount-on-success key) after a successful submit, and shows the error inline on failure without losing what was typed |
+| `src/app/BookSearchFields.tsx` | Client component: title/author/cover/description fields with a debounced "search Open Library" box above them that fills the fields in on pick; used inside both forms above |
+| `src/app/FinishedAtField.tsx` | Client component: the "Finished on" date field, validating a full "YYYY-MM-DD" with a sane year (1000–2100) as the person types — the same check the server applies, mirrored client-side so a bad value never reaches it |
+| `src/app/BackgroundCoverAdmin.tsx` | Admin-only panel for the background collage: replace or remove any current cover, or add another, each via `CoverSearchPicker` |
+| `src/app/CoverSearchPicker.tsx` | Client component: a debounced "search Open Library for a cover" box (like `BookSearchFields`, but returns just a cover URL + caption); used by `BackgroundCoverAdmin` |
+| `src/app/api/book-search/route.ts` | Signed-in-only proxy to Open Library's search API (`openlibrary.org/search.json`), shaped to what `BookSearchFields`/`CoverSearchPicker` need |
+| `src/app/api/book-details/route.ts` | Signed-in-only proxy that fetches one Open Library work's description once a search result is picked, kept separate from the search route so typing doesn't fetch descriptions for results nobody chose |
+| `src/app/ConfirmSubmitForm.tsx` | Confirm-before-submit wrapper used for delete buttons (books, reviews, background covers) |
 | `src/app/login/page.tsx` | Magic-link + password sign-in |
 | `src/app/account/password/page.tsx` | Set or change password |
 | `src/app/auth/confirm/route.ts` | PKCE code exchange after a magic-link click |
@@ -126,6 +150,7 @@ to every signed-in member.
 
 | Version | Name | What it did |
 | --- | --- | --- |
+| 20260930135649 | book_club_background_covers | Added `background_covers` (public read, admin-only writes), seeded with the covers previously hardcoded in `page.tsx` |
 | 20260930122645 | book_club_hidden_suggestions | Added `hidden` to the `books.status` check constraint, for suggestions passed over without deleting them |
 | 20260930111637 | book_club_admin_lock_down_trigger_fn | Revoked public execute on the `prevent_self_admin_change` trigger function |
 | 20260930111623 | book_club_admin | Added `members.is_admin`, a self-promotion guard trigger, and restricted book update/delete to admins via RLS |
