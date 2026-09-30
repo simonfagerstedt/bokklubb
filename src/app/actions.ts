@@ -328,6 +328,72 @@ export async function deleteBackgroundCover(coverId: string) {
   revalidatePath("/");
 }
 
+/**
+ * Persists a new drag-and-drop order for the background collage: `orderedIds`
+ * is every cover's id in its new top-to-bottom/left-to-right order, and each
+ * one's `position` is set to its index. Not tied to a <form> — called
+ * directly from the admin panel's drop handler.
+ */
+export async function reorderBackgroundCovers(orderedIds: string[]) {
+  const { supabase } = await requireAdmin();
+
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from("background_covers")
+        .update({ position: index + 1 })
+        .eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+
+  revalidatePath("/");
+}
+
+function intFormField(
+  formData: FormData,
+  name: string,
+  min: number,
+  max: number,
+): number {
+  const raw = Number(formData.get(name));
+  if (!Number.isFinite(raw)) {
+    throw new Error(`"${name.replaceAll("_", " ")}" must be a number.`);
+  }
+  const value = Math.round(raw);
+  if (value < min || value > max) {
+    throw new Error(
+      `"${name.replaceAll("_", " ")}" must be between ${min} and ${max}.`,
+    );
+  }
+  return value;
+}
+
+export async function updateBackgroundSettings(formData: FormData) {
+  const { supabase } = await requireAdmin();
+
+  const colsMobile = intFormField(formData, "cols_mobile", 1, 20);
+  const colsTablet = intFormField(formData, "cols_tablet", 1, 20);
+  const colsDesktop = intFormField(formData, "cols_desktop", 1, 20);
+  const gapXPercent = intFormField(formData, "gap_x_percent", 0, 100);
+  const gapYPercent = intFormField(formData, "gap_y_percent", 0, 100);
+
+  const { error } = await supabase
+    .from("background_settings")
+    .update({
+      cols_mobile: colsMobile,
+      cols_tablet: colsTablet,
+      cols_desktop: colsDesktop,
+      gap_x_percent: gapXPercent,
+      gap_y_percent: gapYPercent,
+    })
+    .eq("id", true);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/");
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();

@@ -23,7 +23,7 @@ Next.js app, never directly to Supabase.
 
 ## Database schema
 
-Six tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
+Seven tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
 project, all with row level security on (public read, writes scoped to the
 acting member or admin-only).
 
@@ -92,6 +92,30 @@ via the "Background images" panel at the bottom of the page. Seeded with the
 covers that used to be hardcoded in `page.tsx`; if ever emptied, the page
 falls back to that original hardcoded list rather than showing nothing.
 
+### background_settings
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | boolean, PK, default true | always `true` — a `check (id)` constraint keeps this a single-row table |
+| cols_mobile | integer, default 4 | collage columns below the `sm` breakpoint (640px) |
+| cols_tablet | integer, default 7 | collage columns at `sm` (640px) and up |
+| cols_desktop | integer, default 9 | collage columns at `lg` (1024px) and up |
+| gap_x_percent | integer, default 30 | horizontal gap, as a % of a tile's own width |
+| gap_y_percent | integer, default 30 | vertical gap, as a % of a tile's own height |
+| updated_at | timestamptz | |
+
+Admin-configurable layout for the background collage, edited via
+`BackgroundSettingsForm` in the "Background images" panel. Public read; only
+admins can update (RLS + `requireAdmin`). `page.tsx`'s `BookCoverBackground`
+turns these into a scoped `<style>` block (Tailwind can't generate classes
+from a runtime/DB value), and picks how many cover tiles to render by taking
+the LCM of the three column counts (capped at 120) so the last row is always
+full at every breakpoint, rather than a fixed tile count that ignored how
+many covers actually exist. Horizontal and vertical gap were originally one
+shared `gap_percent` column/CSS `gap` shorthand; split into independent
+`gap_x_percent`/`gap_y_percent` (and `column-gap`/`row-gap`) so resizing one
+axis doesn't affect the other.
+
 ### notes
 
 The original scaffold's starter table (title + created_at). Still present,
@@ -127,11 +151,12 @@ to every signed-in member.
 | Path | What it does |
 | --- | --- |
 | `src/app/page.tsx` | The whole club page — currently reading, suggestions, books read, members, background-images admin panel — plus the faded book-cover background |
-| `src/app/actions.ts` | Server Actions: `addSuggestion`, `toggleVote`, `addReview`, `deleteReview`, `markAsCurrent`, `finishCurrentBook`, `updateBookDetails`, `addReadBook`, `hideSuggestion`, `unhideSuggestion`, `deleteBook`, `addBackgroundCover`, `replaceBackgroundCover`, `deleteBackgroundCover`, `signOut` |
+| `src/app/actions.ts` | Server Actions: `addSuggestion`, `toggleVote`, `addReview`, `deleteReview`, `markAsCurrent`, `finishCurrentBook`, `updateBookDetails`, `addReadBook`, `hideSuggestion`, `unhideSuggestion`, `deleteBook`, `addBackgroundCover`, `replaceBackgroundCover`, `deleteBackgroundCover`, `reorderBackgroundCovers`, `updateBackgroundSettings`, `signOut` |
+| `src/app/BackgroundSettingsForm.tsx` | Admin-only form for the background collage's column counts and horizontal/vertical gap |
 | `src/app/SuggestBookForm.tsx`, `src/app/AddReadBookForm.tsx` | Client components for the two "add a book" forms; each clears itself (via a remount-on-success key) after a successful submit, and shows the error inline on failure without losing what was typed |
 | `src/app/BookSearchFields.tsx` | Client component: title/author/cover/description fields with a debounced "search Open Library" box above them that fills the fields in on pick; used inside both forms above |
 | `src/app/FinishedAtField.tsx` | Client component: the "Finished on" date field, validating a full "YYYY-MM-DD" with a sane year (1000–2100) as the person types — the same check the server applies, mirrored client-side so a bad value never reaches it |
-| `src/app/BackgroundCoverAdmin.tsx` | Admin-only panel for the background collage: replace or remove any current cover, or add another, each via `CoverSearchPicker` |
+| `src/app/BackgroundCoverAdmin.tsx` | Admin-only panel for the background collage: drag-and-drop reorder, replace or remove any current cover, or add another, each via `CoverSearchPicker` |
 | `src/app/CoverSearchPicker.tsx` | Client component: a debounced "search Open Library for a cover" box (like `BookSearchFields`, but returns just a cover URL + caption); used by `BackgroundCoverAdmin` |
 | `src/app/api/book-search/route.ts` | Signed-in-only proxy to Open Library's search API (`openlibrary.org/search.json`), shaped to what `BookSearchFields`/`CoverSearchPicker` need |
 | `src/app/api/book-details/route.ts` | Signed-in-only proxy that fetches one Open Library work's description once a search result is picked, kept separate from the search route so typing doesn't fetch descriptions for results nobody chose |
@@ -150,6 +175,8 @@ to every signed-in member.
 
 | Version | Name | What it did |
 | --- | --- | --- |
+| 20260930153202 | book_club_background_settings_split_gap | Split `background_settings.gap_percent` into `gap_x_percent`/`gap_y_percent` |
+| 20260930151854 | book_club_background_settings | Added `background_settings` (single-row, public read, admin-only writes): collage column counts per breakpoint and gap |
 | 20260930135649 | book_club_background_covers | Added `background_covers` (public read, admin-only writes), seeded with the covers previously hardcoded in `page.tsx` |
 | 20260930122645 | book_club_hidden_suggestions | Added `hidden` to the `books.status` check constraint, for suggestions passed over without deleting them |
 | 20260930111637 | book_club_admin_lock_down_trigger_fn | Revoked public execute on the `prevent_self_admin_change` trigger function |

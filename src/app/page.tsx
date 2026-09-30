@@ -14,16 +14,26 @@ import {
   addBackgroundCover,
   replaceBackgroundCover,
   deleteBackgroundCover,
+  reorderBackgroundCovers,
+  updateBackgroundSettings,
   signOut,
 } from "./actions";
 import { ConfirmSubmitForm } from "./ConfirmSubmitForm";
 import { AddReadBookForm } from "./AddReadBookForm";
 import { BackgroundCoverAdmin } from "./BackgroundCoverAdmin";
+import { BackgroundSettingsForm } from "./BackgroundSettingsForm";
 import { FinishedAtField } from "./FinishedAtField";
 import { SuggestBookForm } from "./SuggestBookForm";
 
 type Member = { id: string; display_name: string | null; is_admin: boolean };
 type BackgroundCover = { id: string; cover_url: string; title: string | null };
+type BackgroundSettings = {
+  colsMobile: number;
+  colsTablet: number;
+  colsDesktop: number;
+  gapXPercent: number;
+  gapYPercent: number;
+};
 type Review = {
   id: string;
   rating: number;
@@ -72,18 +82,75 @@ type Book = {
   created_at: string;
 };
 
-function BookCoverBackground({ covers }: { covers: string[] }) {
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+function lcm(a: number, b: number): number {
+  return (a * b) / gcd(a, b);
+}
+
+function BookCoverBackground({
+  covers,
+  settings,
+}: {
+  covers: string[];
+  settings: BackgroundSettings;
+}) {
   // Tile the cover list into a fixed, full-viewport grid behind everything,
-  // faded and desaturated so it reads as texture rather than content.
+  // faded and desaturated so it reads as texture rather than content. The
+  // tile count scales with how many covers actually exist (so adding covers
+  // is visible), rounded up to a multiple that fills the last row on every
+  // breakpoint (or at least on colsDesktop, if the full LCM would be huge).
   const source = covers.length > 0 ? covers : FALLBACK_BACKGROUND_COVERS;
+  const { colsMobile, colsTablet, colsDesktop, gapXPercent, gapYPercent } =
+    settings;
+  const commonCols = lcm(lcm(colsMobile, colsTablet), colsDesktop);
+  const MAX_TILES = 120;
+  const MIN_TILES = Math.max(source.length, 24);
+  const rowMultiple = commonCols <= MAX_TILES ? commonCols : colsDesktop;
+  const tileCount = Math.min(
+    MAX_TILES,
+    Math.ceil(MIN_TILES / rowMultiple) * rowMultiple,
+  );
   const tiles = Array.from(
-    { length: 30 },
+    { length: tileCount },
     (_, i) => source[i % source.length],
   );
 
+  // Column counts and the gaps come from background_settings (admin-editable
+  // in the "Background images" panel), so they can't be plain Tailwind
+  // classes — Tailwind only generates CSS for class names it can see
+  // literally in the source, not ones built from a runtime/database value.
+  // A small scoped <style> block does the same job (one breakpoint per
+  // media query) without needing a stylesheet build step. Each gap is
+  // stored as "% of a tile's own width/height". For an N-column grid, tile
+  // width is ~(100/N)vw, so the horizontal gap is (gapXPercent / N)vw; tiles
+  // are aspect-[2/3] (height = 1.5x width), so the vertical gap works out to
+  // (gapYPercent * 1.5 / N)vw to stay in the same vw-based unit system.
   return (
     <div className="fixed inset-0 -z-10 bg-zinc-50 dark:bg-black" aria-hidden="true">
-      <div className="grid h-full w-full grid-cols-3 gap-1 opacity-25 grayscale sm:grid-cols-5 lg:grid-cols-6 dark:opacity-20">
+      <style>{`
+        .book-cover-collage {
+          grid-template-columns: repeat(${colsMobile}, minmax(0, 1fr));
+          column-gap: ${gapXPercent / colsMobile}vw;
+          row-gap: ${(gapYPercent * 1.5) / colsMobile}vw;
+        }
+        @media (min-width: 640px) {
+          .book-cover-collage {
+            grid-template-columns: repeat(${colsTablet}, minmax(0, 1fr));
+            column-gap: ${gapXPercent / colsTablet}vw;
+            row-gap: ${(gapYPercent * 1.5) / colsTablet}vw;
+          }
+        }
+        @media (min-width: 1024px) {
+          .book-cover-collage {
+            grid-template-columns: repeat(${colsDesktop}, minmax(0, 1fr));
+            column-gap: ${gapXPercent / colsDesktop}vw;
+            row-gap: ${(gapYPercent * 1.5) / colsDesktop}vw;
+          }
+        }
+      `}</style>
+      <div className="book-cover-collage grid h-full w-full opacity-25 grayscale dark:opacity-20">
         {tiles.map((url, i) => (
           <div key={i} className="aspect-[2/3] w-full overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -178,6 +245,20 @@ function BookEditForm({ book }: { book: Book }) {
   );
 }
 
+function BookDescription({ description }: { description: string | null }) {
+  if (!description) return null;
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300">
+        Description
+      </summary>
+      <p className="mt-1 text-sm whitespace-pre-wrap text-zinc-600 dark:text-zinc-400">
+        {description}
+      </p>
+    </details>
+  );
+}
+
 function AdminLockedButton({ label }: { label: string }) {
   return (
     <button
@@ -211,6 +292,7 @@ export default async function Home() {
     { data: reviews },
     { data: votes },
     { data: backgroundCovers },
+    { data: backgroundSettingsRow },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase
@@ -229,6 +311,11 @@ export default async function Home() {
       .from("background_covers")
       .select("id, cover_url, title")
       .order("position", { ascending: true }),
+    supabase
+      .from("background_settings")
+      .select("cols_mobile, cols_tablet, cols_desktop, gap_x_percent, gap_y_percent")
+      .eq("id", true)
+      .maybeSingle(),
   ]);
 
   const user = userData.user;
@@ -243,6 +330,13 @@ export default async function Home() {
   const isAdmin = me?.is_admin ?? false;
 
   const covers = (backgroundCovers ?? []) as BackgroundCover[];
+  const backgroundSettings: BackgroundSettings = {
+    colsMobile: backgroundSettingsRow?.cols_mobile ?? 4,
+    colsTablet: backgroundSettingsRow?.cols_tablet ?? 7,
+    colsDesktop: backgroundSettingsRow?.cols_desktop ?? 9,
+    gapXPercent: backgroundSettingsRow?.gap_x_percent ?? 30,
+    gapYPercent: backgroundSettingsRow?.gap_y_percent ?? 30,
+  };
 
   const allBooks = (books ?? []) as Book[];
   const current = allBooks.find((b) => b.status === "current");
@@ -278,7 +372,10 @@ export default async function Home() {
 
   return (
     <div className="relative min-h-screen font-sans">
-      <BookCoverBackground covers={covers.map((c) => c.cover_url)} />
+      <BookCoverBackground
+        covers={covers.map((c) => c.cover_url)}
+        settings={backgroundSettings}
+      />
 
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
@@ -483,6 +580,7 @@ export default async function Home() {
                             suggested by {suggestedBy}
                           </p>
                         )}
+                        <BookDescription description={book.description} />
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -573,6 +671,7 @@ export default async function Home() {
                           {book.pitch}
                         </p>
                       )}
+                      <BookDescription description={book.description} />
                     </div>
                     {isAdmin && (
                       <div className="flex shrink-0 items-center gap-2">
@@ -645,6 +744,7 @@ export default async function Home() {
                           {new Date(book.finished_at).toISOString().slice(0, 10)}
                         </p>
                       )}
+                      <BookDescription description={book.description} />
 
                       {bookReviews.length > 0 && (
                         <ul className="mt-2 flex flex-col gap-1 border-t border-zinc-100 pt-2 dark:border-zinc-900">
@@ -772,13 +872,20 @@ export default async function Home() {
             </h2>
             <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
               The faded cover collage behind the page. Search Open Library to
-              replace any of these, or add more.
+              replace any of these, or add more, and drag to reorder.
             </p>
+            <div className="mb-4">
+              <BackgroundSettingsForm
+                settings={backgroundSettings}
+                action={updateBackgroundSettings}
+              />
+            </div>
             <BackgroundCoverAdmin
               covers={covers}
               addAction={addBackgroundCover}
               replaceAction={replaceBackgroundCover}
               deleteAction={deleteBackgroundCover}
+              reorderAction={reorderBackgroundCovers}
             />
           </section>
         )}

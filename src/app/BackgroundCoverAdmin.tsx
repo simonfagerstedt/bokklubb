@@ -8,35 +8,97 @@ type Cover = { id: string; cover_url: string; title: string | null };
 
 /**
  * Admin panel for the background collage: a grid of the current covers,
- * each replaceable (search Open Library, pick a result) or removable, plus
- * an "add another" form at the end. All three server actions revalidate
- * "/" on success, so a successful change here refreshes the covers this
- * component was passed, straight from the Server Component parent.
+ * drag-and-drop reorderable, each replaceable (search Open Library, pick a
+ * result) or removable, plus an "add another" form at the end. All server
+ * actions revalidate "/" on success, so a successful change here refreshes
+ * the covers this component was passed, straight from the Server Component
+ * parent.
  */
 export function BackgroundCoverAdmin({
   covers,
   addAction,
   replaceAction,
   deleteAction,
+  reorderAction,
 }: {
   covers: Cover[];
   addAction: (formData: FormData) => Promise<void>;
   replaceAction: (coverId: string, formData: FormData) => Promise<void>;
   deleteAction: (coverId: string) => Promise<void>;
+  reorderAction: (orderedIds: string[]) => Promise<void>;
 }) {
   const [replacingId, setReplacingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // Local drag order, reset from `covers` whenever the server sends fresh
+  // data (add/replace/delete/reorder all revalidate "/"). This is the
+  // React-docs "adjust state during render when a prop changes" pattern —
+  // deliberately not a useEffect, so there's no extra render/flash.
+  const [prevCovers, setPrevCovers] = useState(covers);
+  const [order, setOrder] = useState(() => covers.map((c) => c.id));
+  if (covers !== prevCovers) {
+    setPrevCovers(covers);
+    setOrder(covers.map((c) => c.id));
+  }
+
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
+
+  const coversById = new Map(covers.map((c) => [c.id, c]));
+  const orderedCovers = order
+    .map((id) => coversById.get(id))
+    .filter((c): c is Cover => c !== undefined);
+
+  function handleDrop(targetId: string) {
+    const dragged = draggingId;
+    setDraggingId(null);
+    if (!dragged || dragged === targetId) return;
+
+    const from = order.indexOf(dragged);
+    const to = order.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+
+    const next = order.slice();
+    next.splice(from, 1);
+    next.splice(to, 0, dragged);
+    setOrder(next);
+    setReorderError(null);
+
+    reorderAction(next).catch((err) => {
+      setReorderError(
+        err instanceof Error ? err.message : "Couldn't save the new order.",
+      );
+      setOrder(covers.map((c) => c.id));
+    });
+  }
+
   return (
     <div className="flex flex-col gap-3">
+      {covers.length > 1 && (
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+          Drag a cover to reorder the collage.
+        </p>
+      )}
+      {reorderError && <p className="text-xs text-red-500">{reorderError}</p>}
       <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {covers.map((cover) => (
-          <li key={cover.id} className="flex flex-col gap-1">
+        {orderedCovers.map((cover) => (
+          <li
+            key={cover.id}
+            draggable
+            onDragStart={() => setDraggingId(cover.id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => handleDrop(cover.id)}
+            onDragEnd={() => setDraggingId(null)}
+            className={`flex cursor-grab flex-col gap-1 active:cursor-grabbing ${
+              draggingId === cover.id ? "opacity-40" : ""
+            }`}
+          >
             <div className="aspect-[2/3] w-full overflow-hidden rounded border border-zinc-200 dark:border-zinc-800">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={cover.cover_url}
                 alt=""
+                draggable={false}
                 className="h-full w-full object-cover"
               />
             </div>
