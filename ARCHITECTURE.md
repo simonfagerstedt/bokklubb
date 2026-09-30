@@ -126,7 +126,7 @@ to every signed-in member.
 
 | Version | Name | What it did |
 | --- | --- | --- |
-| 20260930140000 | book_club_hidden_suggestions | Added `hidden` to the `books.status` check constraint, for suggestions passed over without deleting them |
+| 20260930122645 | book_club_hidden_suggestions | Added `hidden` to the `books.status` check constraint, for suggestions passed over without deleting them |
 | 20260930111637 | book_club_admin_lock_down_trigger_fn | Revoked public execute on the `prevent_self_admin_change` trigger function |
 | 20260930111623 | book_club_admin | Added `members.is_admin`, a self-promotion guard trigger, and restricted book update/delete to admins via RLS |
 | 20260927184457 | book_club_display_name_nullable | `display_name` nullable — no more falling back to an email-derived name |
