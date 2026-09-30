@@ -2,13 +2,20 @@ import { createClient } from "@/lib/supabase/server";
 import {
   addSuggestion,
   addReview,
+  deleteReview,
   toggleVote,
   markAsCurrent,
   finishCurrentBook,
+  updateBookDetails,
+  addReadBook,
+  hideSuggestion,
+  unhideSuggestion,
+  deleteBook,
   signOut,
 } from "./actions";
+import { ConfirmSubmitForm } from "./ConfirmSubmitForm";
 
-type Member = { id: string; display_name: string | null };
+type Member = { id: string; display_name: string | null; is_admin: boolean };
 type Review = {
   id: string;
   rating: number;
@@ -45,7 +52,7 @@ type Book = {
   id: string;
   title: string;
   author: string;
-  status: "suggested" | "current" | "read";
+  status: "suggested" | "current" | "read" | "hidden";
   pitch: string | null;
   cover_url: string | null;
   description: string | null;
@@ -83,6 +90,102 @@ function BookCoverBackground() {
   );
 }
 
+function BookEditForm({ book }: { book: Book }) {
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-2 border-t border-zinc-100 pt-3 text-sm dark:border-zinc-900">
+      <form
+        id={`edit-book-${book.id}`}
+        action={updateBookDetails.bind(null, book.id)}
+        className="col-span-2 grid grid-cols-2 gap-2"
+      >
+        <input
+          name="title"
+          defaultValue={book.title}
+          placeholder="Title"
+          required
+          className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+        />
+        <input
+          name="author"
+          defaultValue={book.author}
+          placeholder="Author"
+          required
+          className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+        />
+        <input
+          name="cover_url"
+          defaultValue={book.cover_url ?? ""}
+          placeholder="Cover image URL"
+          className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+        />
+        <input
+          name="original_title"
+          defaultValue={book.original_title ?? ""}
+          placeholder="Original title (optional)"
+          className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+        />
+        <input
+          name="published_year"
+          type="number"
+          defaultValue={book.published_year ?? ""}
+          placeholder="Year"
+          className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+        />
+        <textarea
+          name="description"
+          defaultValue={book.description ?? ""}
+          placeholder="Description"
+          rows={2}
+          className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+        />
+        {book.status === "read" && (
+          <label className="col-span-2 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 sm:col-span-1">
+            Finished on
+            <input
+              name="finished_at"
+              type="date"
+              defaultValue={
+                book.finished_at
+                  ? new Date(book.finished_at).toISOString().slice(0, 10)
+                  : ""
+              }
+              className="flex-1 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+        )}
+      </form>
+      <div className="col-span-2 flex items-center gap-2">
+        <button
+          form={`edit-book-${book.id}`}
+          className="rounded bg-black px-3 py-1.5 text-white dark:bg-white dark:text-black"
+        >
+          Save changes
+        </button>
+        <ConfirmSubmitForm
+          action={deleteBook.bind(null, book.id)}
+          confirmText={`Delete "${book.title}"? This can't be undone.`}
+        >
+          <button className="rounded border border-red-300 px-3 py-1.5 text-red-600 dark:border-red-900 dark:text-red-400">
+            Delete book
+          </button>
+        </ConfirmSubmitForm>
+      </div>
+    </div>
+  );
+}
+
+function AdminLockedButton({ label }: { label: string }) {
+  return (
+    <button
+      disabled
+      title="Admins only"
+      className="cursor-not-allowed rounded border border-zinc-200 px-3 py-1.5 text-sm text-zinc-400 dark:border-zinc-800 dark:text-zinc-600"
+    >
+      🔒 {label}
+    </button>
+  );
+}
+
 function Stars({ rating }: { rating: number }) {
   return (
     <span className="text-amber-500" aria-label={`${rating} out of 5 stars`}>
@@ -111,7 +214,7 @@ export default async function Home() {
         "id, title, author, status, pitch, cover_url, description, original_title, published_year, added_by, finished_at, created_at",
       )
       .order("created_at", { ascending: false }),
-    supabase.from("members").select("id, display_name"),
+    supabase.from("members").select("id, display_name, is_admin"),
     supabase
       .from("reviews")
       .select("id, book_id, rating, body, member_id")
@@ -128,10 +231,12 @@ export default async function Home() {
     (user?.user_metadata?.full_name as string | undefined) ??
     me?.display_name ??
     user?.email;
+  const isAdmin = me?.is_admin ?? false;
 
   const allBooks = (books ?? []) as Book[];
   const current = allBooks.find((b) => b.status === "current");
   const suggested = allBooks.filter((b) => b.status === "suggested");
+  const hiddenSuggestions = allBooks.filter((b) => b.status === "hidden");
   const read = allBooks
     .filter((b) => b.status === "read")
     .sort(
@@ -229,47 +334,80 @@ export default async function Home() {
               )}
 
               {user && (
-                <form action={finishCurrentBook.bind(null, current.id)} className="mt-4">
-                  <button className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
-                    Mark as finished
-                  </button>
-                </form>
+                <div className="mt-4">
+                  {isAdmin ? (
+                    <form action={finishCurrentBook.bind(null, current.id)}>
+                      <button className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+                        Mark as finished
+                      </button>
+                    </form>
+                  ) : (
+                    <AdminLockedButton label="Mark as finished" />
+                  )}
+                </div>
               )}
 
-              {user && (
-                <form
-                  action={addReview.bind(null, current.id)}
-                  className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-900"
-                >
-                  <label className="text-sm text-zinc-600 dark:text-zinc-400">
-                    Your take so far
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      name="rating"
-                      defaultValue=""
-                      className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                    >
-                      <option value="" disabled>
-                        Rate
-                      </option>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <option key={n} value={n}>
-                          {n} ★
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      name="body"
-                      placeholder="Short review (optional)"
-                      className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                    />
-                    <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
-                      Save
-                    </button>
-                  </div>
-                </form>
+              {isAdmin && (
+                <details className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-900">
+                  <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
+                    Edit book details
+                  </summary>
+                  <BookEditForm book={current} />
+                </details>
               )}
+
+              {user && (() => {
+                const myReview = (reviewsByBook.get(current.id) ?? []).find(
+                  (r) => r.member_id === user.id,
+                );
+                return (
+                  <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-900">
+                    <label className="text-sm text-zinc-600 dark:text-zinc-400">
+                      Your take so far
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <form
+                        action={addReview.bind(null, current.id)}
+                        className="flex flex-1 items-center gap-2"
+                      >
+                        <select
+                          name="rating"
+                          defaultValue={myReview?.rating ?? ""}
+                          className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        >
+                          <option value="" disabled>
+                            Rate
+                          </option>
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <option key={n} value={n}>
+                              {n} ★
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          name="body"
+                          defaultValue={myReview?.body ?? ""}
+                          placeholder="Short review (optional)"
+                          className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        />
+                        <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
+                          Save
+                        </button>
+                      </form>
+                      {myReview && (
+                        <ConfirmSubmitForm
+                          action={deleteReview.bind(null, current.id)}
+                          confirmText="Delete your review of this book?"
+                        >
+                          <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
+                            Delete
+                          </button>
+                        </ConfirmSubmitForm>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
               </div>
             </div>
           ) : (
@@ -344,12 +482,35 @@ export default async function Home() {
                           ▲ {voteCount}
                         </span>
                       )}
-                      {user && !current && (
-                        <form action={markAsCurrent.bind(null, book.id)}>
-                          <button className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
-                            Start reading
+                      {!current &&
+                        (isAdmin ? (
+                          <form action={markAsCurrent.bind(null, book.id)}>
+                            <button className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+                              Start reading
+                            </button>
+                          </form>
+                        ) : (
+                          user && <AdminLockedButton label="Start reading" />
+                        ))}
+                      {isAdmin && (
+                        <ConfirmSubmitForm
+                          action={hideSuggestion.bind(null, book.id)}
+                          confirmText={`Hide "${book.title}" from suggestions? You can bring it back later from Hidden suggestions.`}
+                        >
+                          <button className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                            Hide
                           </button>
-                        </form>
+                        </ConfirmSubmitForm>
+                      )}
+                      {isAdmin && (
+                        <ConfirmSubmitForm
+                          action={deleteBook.bind(null, book.id)}
+                          confirmText={`Delete "${book.title}"? This can't be undone.`}
+                        >
+                          <button className="rounded border border-red-300 px-2 py-1 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
+                            Delete
+                          </button>
+                        </ConfirmSubmitForm>
                       )}
                     </div>
                   </li>
@@ -393,6 +554,53 @@ export default async function Home() {
               to suggest a book or vote.
             </p>
           )}
+
+          {hiddenSuggestions.length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
+                Hidden suggestions ({hiddenSuggestions.length})
+              </summary>
+              <ul className="mt-2 flex flex-col gap-2">
+                {hiddenSuggestions.map((book) => (
+                  <li
+                    key={book.id}
+                    className="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                  >
+                    <div>
+                      <p className="font-medium text-zinc-900 dark:text-zinc-50">
+                        {book.title}{" "}
+                        <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                          — {book.author}
+                        </span>
+                      </p>
+                      {book.pitch && (
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          {book.pitch}
+                        </p>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <form action={unhideSuggestion.bind(null, book.id)}>
+                          <button className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+                            Unhide
+                          </button>
+                        </form>
+                        <ConfirmSubmitForm
+                          action={deleteBook.bind(null, book.id)}
+                          confirmText={`Delete "${book.title}"? This can't be undone.`}
+                        >
+                          <button className="rounded border border-red-300 px-2 py-1 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
+                            Delete
+                          </button>
+                        </ConfirmSubmitForm>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </section>
 
         {/* Books read */}
@@ -412,78 +620,174 @@ export default async function Home() {
                 return (
                   <li
                     key={book.id}
-                    className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                    className="flex gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
                   >
-                    <div className="flex items-baseline justify-between">
-                      <p className="font-medium text-zinc-900 dark:text-zinc-50">
-                        {book.title}{" "}
-                        <span className="font-normal text-zinc-500 dark:text-zinc-400">
-                          — {book.author}
-                        </span>
-                      </p>
-                      {avg !== null && (
-                        <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                          {avg.toFixed(1)} ★ ({bookReviews.length})
-                        </span>
+                    {book.cover_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={book.cover_url}
+                        alt={`Cover of ${book.title}`}
+                        className="h-24 w-16 shrink-0 rounded object-cover shadow-sm"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between">
+                        <p className="font-medium text-zinc-900 dark:text-zinc-50">
+                          {book.title}{" "}
+                          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                            — {book.author}
+                          </span>
+                        </p>
+                        {avg !== null && (
+                          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                            {avg.toFixed(1)} ★ ({bookReviews.length})
+                          </span>
+                        )}
+                      </div>
+                      {book.finished_at && (
+                        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                          finished{" "}
+                          {new Date(book.finished_at).toISOString().slice(0, 10)}
+                        </p>
+                      )}
+
+                      {bookReviews.length > 0 && (
+                        <ul className="mt-2 flex flex-col gap-1 border-t border-zinc-100 pt-2 dark:border-zinc-900">
+                          {bookReviews.map((r) => (
+                            <li key={r.id} className="text-sm">
+                              <Stars rating={r.rating} />{" "}
+                              <span className="text-zinc-600 dark:text-zinc-400">
+                                {membersById.get(r.member_id)?.display_name ??
+                                  "member"}
+                                {r.body ? ` — ${r.body}` : ""}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {user && (() => {
+                        const myReview = bookReviews.find(
+                          (r) => r.member_id === user.id,
+                        );
+                        return (
+                          <div className="mt-2 flex items-center gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
+                            <form
+                              action={addReview.bind(null, book.id)}
+                              className="flex flex-1 items-center gap-2"
+                            >
+                              <select
+                                name="rating"
+                                defaultValue={myReview?.rating ?? ""}
+                                required
+                                className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                              >
+                                <option value="" disabled>
+                                  Rate
+                                </option>
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                  <option key={n} value={n}>
+                                    {n} ★
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                name="body"
+                                defaultValue={myReview?.body ?? ""}
+                                placeholder={myReview ? "Edit your review" : "Add your review"}
+                                className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                              />
+                              <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
+                                Save
+                              </button>
+                            </form>
+                            {myReview && (
+                              <ConfirmSubmitForm
+                                action={deleteReview.bind(null, book.id)}
+                                confirmText="Delete your review of this book?"
+                              >
+                                <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
+                                  Delete
+                                </button>
+                              </ConfirmSubmitForm>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {isAdmin && (
+                        <details className="mt-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
+                          <summary className="cursor-pointer text-xs text-zinc-500 dark:text-zinc-400">
+                            Edit
+                          </summary>
+                          <BookEditForm book={book} />
+                        </details>
                       )}
                     </div>
-                    {book.finished_at && (
-                      <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                        finished{" "}
-                        {new Date(book.finished_at).toLocaleDateString()}
-                      </p>
-                    )}
-
-                    {bookReviews.length > 0 && (
-                      <ul className="mt-2 flex flex-col gap-1 border-t border-zinc-100 pt-2 dark:border-zinc-900">
-                        {bookReviews.map((r) => (
-                          <li key={r.id} className="text-sm">
-                            <Stars rating={r.rating} />{" "}
-                            <span className="text-zinc-600 dark:text-zinc-400">
-                              {membersById.get(r.member_id)?.display_name ??
-                                "member"}
-                              {r.body ? ` — ${r.body}` : ""}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {user &&
-                      !bookReviews.some((r) => r.member_id === user.id) && (
-                        <form
-                          action={addReview.bind(null, book.id)}
-                          className="mt-2 flex items-center gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-900"
-                        >
-                          <select
-                            name="rating"
-                            defaultValue=""
-                            required
-                            className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                          >
-                            <option value="" disabled>
-                              Rate
-                            </option>
-                            {[1, 2, 3, 4, 5].map((n) => (
-                              <option key={n} value={n}>
-                                {n} ★
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            name="body"
-                            placeholder="Add your review"
-                            className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                          />
-                          <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
-                            Save
-                          </button>
-                        </form>
-                      )}
                   </li>
                 );
               })}
             </ul>
+          )}
+
+          {isAdmin && (
+            <details className="mt-3 rounded-lg border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
+              <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
+                Add a book you&apos;ve already read
+              </summary>
+              <form
+                action={addReadBook}
+                className="mt-3 grid grid-cols-2 gap-2 text-sm"
+              >
+                <input
+                  name="title"
+                  placeholder="Title"
+                  required
+                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+                />
+                <input
+                  name="author"
+                  placeholder="Author"
+                  required
+                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+                />
+                <input
+                  name="cover_url"
+                  placeholder="Cover image URL"
+                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+                <input
+                  name="original_title"
+                  placeholder="Original title (optional)"
+                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+                />
+                <input
+                  name="published_year"
+                  type="number"
+                  placeholder="Year"
+                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
+                />
+                <textarea
+                  name="description"
+                  placeholder="Description"
+                  rows={2}
+                  className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+                <label className="col-span-2 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 sm:col-span-1">
+                  Finished on
+                  <input
+                    name="finished_at"
+                    type="date"
+                    className="flex-1 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                  />
+                </label>
+                <div className="col-span-2">
+                  <button className="rounded bg-black px-3 py-1.5 text-white dark:bg-white dark:text-black">
+                    Add book
+                  </button>
+                </div>
+              </form>
+            </details>
           )}
         </section>
 
