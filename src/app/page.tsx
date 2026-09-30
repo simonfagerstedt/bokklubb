@@ -82,13 +82,6 @@ type Book = {
   created_at: string;
 };
 
-function gcd(a: number, b: number): number {
-  return b === 0 ? a : gcd(b, a % b);
-}
-function lcm(a: number, b: number): number {
-  return (a * b) / gcd(a, b);
-}
-
 function BookCoverBackground({
   covers,
   settings,
@@ -99,18 +92,26 @@ function BookCoverBackground({
   // Tile the cover list into a fixed, full-viewport grid behind everything,
   // faded and desaturated so it reads as texture rather than content. The
   // tile count scales with how many covers actually exist (so adding covers
-  // is visible), rounded up to a multiple that fills the last row on every
-  // breakpoint (or at least on colsDesktop, if the full LCM would be huge).
+  // is visible), rounded up to a multiple of colsDesktop so the last row is
+  // always full at the most-viewed (desktop) breakpoint. Capped well below
+  // what it costs to server-render each request — a Worker only gets a
+  // short CPU budget per request, and a previous, uncapped version of this
+  // (chasing a multiple of all three breakpoints' column counts at once,
+  // with no sane ceiling) rendered well over a hundred tiles and blew that
+  // budget, returning Cloudflare error 1102 ("exceeded resource limits").
   const source = covers.length > 0 ? covers : FALLBACK_BACKGROUND_COVERS;
   const { colsMobile, colsTablet, colsDesktop, gapXPercent, gapYPercent } =
     settings;
-  const commonCols = lcm(lcm(colsMobile, colsTablet), colsDesktop);
-  const MAX_TILES = 120;
-  const MIN_TILES = Math.max(source.length, 24);
-  const rowMultiple = commonCols <= MAX_TILES ? commonCols : colsDesktop;
+  const MAX_TILES = 60;
+  // The largest multiple of colsDesktop that still fits under MAX_TILES,
+  // so the cap itself never breaks the "full last row" guarantee.
+  const tileCap = Math.max(
+    colsDesktop,
+    Math.floor(MAX_TILES / colsDesktop) * colsDesktop,
+  );
   const tileCount = Math.min(
-    MAX_TILES,
-    Math.ceil(MIN_TILES / rowMultiple) * rowMultiple,
+    tileCap,
+    Math.ceil(Math.max(source.length, 24) / colsDesktop) * colsDesktop,
   );
   const tiles = Array.from(
     { length: tileCount },
