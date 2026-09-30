@@ -8,6 +8,7 @@ type Settings = {
   colsDesktop: number;
   gapXPercent: number;
   gapYPercent: number;
+  grayscale: boolean;
 };
 
 /**
@@ -109,6 +110,19 @@ export function BackgroundSettingsForm({
           defaultValue={settings.gapYPercent}
           className="w-20 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
         />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          Color
+        </span>
+        <span className="flex h-[30px] items-center">
+          <input
+            name="color"
+            type="checkbox"
+            defaultChecked={!settings.grayscale}
+            className="h-4 w-4"
+          />
+        </span>
       </label>
       <button
         disabled={pending}

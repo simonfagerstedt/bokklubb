@@ -33,6 +33,7 @@ type BackgroundSettings = {
   colsDesktop: number;
   gapXPercent: number;
   gapYPercent: number;
+  grayscale: boolean;
 };
 type Review = {
   id: string;
@@ -100,7 +101,7 @@ function BookCoverBackground({
   // with no sane ceiling) rendered well over a hundred tiles and blew that
   // budget, returning Cloudflare error 1102 ("exceeded resource limits").
   const source = covers.length > 0 ? covers : FALLBACK_BACKGROUND_COVERS;
-  const { colsMobile, colsTablet, colsDesktop, gapXPercent, gapYPercent } =
+  const { colsMobile, colsTablet, colsDesktop, gapXPercent, gapYPercent, grayscale } =
     settings;
   const MAX_TILES = 60;
   // The largest multiple of colsDesktop that still fits under MAX_TILES,
@@ -151,7 +152,13 @@ function BookCoverBackground({
           }
         }
       `}</style>
-      <div className="book-cover-collage grid h-full w-full opacity-25 grayscale dark:opacity-20">
+      <div
+        className={`book-cover-collage grid h-full w-full ${
+          grayscale
+            ? "opacity-25 grayscale dark:opacity-20"
+            : "opacity-10 dark:opacity-10"
+        }`}
+      >
         {tiles.map((url, i) => (
           <div key={i} className="aspect-[2/3] w-full overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -260,6 +267,24 @@ function BookDescription({ description }: { description: string | null }) {
   );
 }
 
+function BookMeta({
+  originalTitle,
+  publishedYear,
+}: {
+  originalTitle: string | null;
+  publishedYear: number | null;
+}) {
+  if (!originalTitle && !publishedYear) return null;
+  return (
+    <span className="text-zinc-400 dark:text-zinc-500">
+      {" "}
+      ({originalTitle}
+      {originalTitle && publishedYear && ", "}
+      {publishedYear})
+    </span>
+  );
+}
+
 function AdminLockedButton({ label }: { label: string }) {
   return (
     <button
@@ -314,7 +339,9 @@ export default async function Home() {
       .order("position", { ascending: true }),
     supabase
       .from("background_settings")
-      .select("cols_mobile, cols_tablet, cols_desktop, gap_x_percent, gap_y_percent")
+      .select(
+        "cols_mobile, cols_tablet, cols_desktop, gap_x_percent, gap_y_percent, grayscale",
+      )
       .eq("id", true)
       .maybeSingle(),
   ]);
@@ -337,6 +364,7 @@ export default async function Home() {
     colsDesktop: backgroundSettingsRow?.cols_desktop ?? 9,
     gapXPercent: backgroundSettingsRow?.gap_x_percent ?? 30,
     gapYPercent: backgroundSettingsRow?.gap_y_percent ?? 30,
+    grayscale: backgroundSettingsRow?.grayscale ?? true,
   };
 
   const allBooks = (books ?? []) as Book[];
@@ -570,6 +598,10 @@ export default async function Home() {
                           <span className="font-normal text-zinc-500 dark:text-zinc-400">
                             — {book.author}
                           </span>
+                          <BookMeta
+                            originalTitle={book.original_title}
+                            publishedYear={book.published_year}
+                          />
                         </p>
                         {book.pitch && (
                           <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -666,6 +698,10 @@ export default async function Home() {
                         <span className="font-normal text-zinc-500 dark:text-zinc-400">
                           — {book.author}
                         </span>
+                        <BookMeta
+                          originalTitle={book.original_title}
+                          publishedYear={book.published_year}
+                        />
                       </p>
                       {book.pitch && (
                         <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -732,6 +768,10 @@ export default async function Home() {
                           <span className="font-normal text-zinc-500 dark:text-zinc-400">
                             — {book.author}
                           </span>
+                          <BookMeta
+                            originalTitle={book.original_title}
+                            publishedYear={book.published_year}
+                          />
                         </p>
                         {avg !== null && (
                           <span className="text-sm text-zinc-500 dark:text-zinc-400">

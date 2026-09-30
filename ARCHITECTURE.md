@@ -102,6 +102,7 @@ falls back to that original hardcoded list rather than showing nothing.
 | cols_desktop | integer, default 9 | collage columns at `lg` (1024px) and up |
 | gap_x_percent | integer, default 30 | horizontal gap, as a % of a tile's own width |
 | gap_y_percent | integer, default 30 | vertical gap, as a % of a tile's own height |
+| grayscale | boolean, default true | `false` shows the covers in color (still faded, just less so) |
 | updated_at | timestamptz | |
 
 Admin-configurable layout for the background collage, edited via
@@ -175,6 +176,7 @@ to every signed-in member.
 
 | Version | Name | What it did |
 | --- | --- | --- |
+| 20260930204752 | book_club_background_settings_grayscale | Added `background_settings.grayscale` (default `true`) |
 | 20260930153202 | book_club_background_settings_split_gap | Split `background_settings.gap_percent` into `gap_x_percent`/`gap_y_percent` |
 | 20260930151854 | book_club_background_settings | Added `background_settings` (single-row, public read, admin-only writes): collage column counts per breakpoint and gap |
 | 20260930135649 | book_club_background_covers | Added `background_covers` (public read, admin-only writes), seeded with the covers previously hardcoded in `page.tsx` |

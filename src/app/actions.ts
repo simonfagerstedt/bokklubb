@@ -378,6 +378,7 @@ export async function updateBackgroundSettings(formData: FormData) {
   const colsDesktop = intFormField(formData, "cols_desktop", 1, 20);
   const gapXPercent = intFormField(formData, "gap_x_percent", 0, 100);
   const gapYPercent = intFormField(formData, "gap_y_percent", 0, 100);
+  const grayscale = formData.get("color") !== "on";
 
   const { error } = await supabase
     .from("background_settings")
@@ -387,6 +388,7 @@ export async function updateBackgroundSettings(formData: FormData) {
       cols_desktop: colsDesktop,
       gap_x_percent: gapXPercent,
       gap_y_percent: gapYPercent,
+      grayscale,
     })
     .eq("id", true);
   if (error) throw new Error(error.message);
