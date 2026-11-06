@@ -171,7 +171,8 @@ to every signed-in member.
 | `src/proxy.ts` | Runs `updateSession` on every request (Next.js 16 renamed "middleware" to "proxy") |
 | `supabase/migrations/*.sql` | Schema as code, applied by `supabase db push` (or the Deploy workflow) |
 | `wrangler.jsonc`, `open-next.config.ts` | Cloudflare Worker config via the OpenNext adapter |
-| `.github/workflows/ci.yml` | Lint + build on every PR |
+| `.github/workflows/ci.yml` | Lint + build on every PR, plus the screen-size test for both clubs |
+| `e2e/screen-sizes.spec.ts`, `e2e/fake-supabase.mjs`, `playwright.config.ts` | Screen-size test: loads every page logged out, as a member and as admin (with each admin form open) at six widths from a 375 px phone to a 1920 px desktop, and fails on sideways scrolling or any button/field off screen. Runs against a fake Supabase with awkward data (long titles and names), so no real database is touched. Run locally: build with `NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=fake`, then `npm run test:screens` |
 | `.github/workflows/deploy.yml` | Migrate DB, then build + deploy to Cloudflare, on every push to `main` |
 
 ## Migration history
