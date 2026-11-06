@@ -6,28 +6,36 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  migrate-database:
+  deploy:
+    name: Deploy ${{ matrix.club }}
     runs-on: ubuntu-latest
+    strategy:
+      # One club failing must not stop the other from deploying.
+      fail-fast: false
+      matrix:
+        include:
+          - club: book
+            prefix: "BOK_"
+            wrangler_env: ""
+          - club: film
+            prefix: "FILM_"
+            wrangler_env: "film"
     steps:
       - uses: actions/checkout@v4
+
       - uses: supabase/setup-cli@v1
         with:
           # Pinned instead of "latest": resolving "latest" costs the action
           # an extra GitHub API call, which can hit a rate limit (as it did
           # on 2026-09-30) on shared runner IPs. Bump this occasionally.
           version: 2.118.0
+
       - name: Push migrations to Supabase
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" && supabase db push
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-
-  deploy-worker:
-    needs: migrate-database
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          SUPABASE_DB_PASSWORD: ${{ secrets[format('{0}SUPABASE_DB_PASSWORD', matrix.prefix)] }}
+          SUPABASE_PROJECT_ID: ${{ secrets[format('{0}SUPABASE_PROJECT_ID', matrix.prefix)] }}
 
       - uses: actions/setup-node@v4
         with:
@@ -36,13 +44,16 @@ jobs:
 
       - run: npm ci
 
-      # opennextjs-cloudflare build reads NEXT_PUBLIC_* at build time (they
-      # get baked into the client bundle), so they're needed here even
-      # though the Worker also gets them as runtime vars below.
+      # NEXT_PUBLIC_* are baked into the build, so each club needs its own
+      # build. NEXT_PUBLIC_CLUB is unused until the club config (step 7).
       - name: Build and deploy to Cloudflare Workers
-        run: npm run deploy
+        run: |
+          npx opennextjs-cloudflare build
+          npx opennextjs-cloudflare deploy ${WRANGLER_ENV:+--env "$WRANGLER_ENV"}
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          WRANGLER_ENV: ${{ matrix.wrangler_env }}
+          NEXT_PUBLIC_CLUB: ${{ matrix.club }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets[format('{0}NEXT_PUBLIC_SUPABASE_URL', matrix.prefix)] }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets[format('{0}NEXT_PUBLIC_SUPABASE_ANON_KEY', matrix.prefix)] }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

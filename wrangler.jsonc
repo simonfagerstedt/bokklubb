@@ -19,5 +19,16 @@
   ],
   "observability": {
     "enabled": true
+  },
+  "env": {
+    "film": {
+      "name": "filmklubb",
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "filmklubb"
+        }
+      ]
+    }
   }
 }
