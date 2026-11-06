@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BookSearchResult } from "./api/book-search/route";
+import { club } from "@/club";
 
 /**
  * A small "search Open Library for a cover" box: type a title, pick a
@@ -11,7 +12,7 @@ import type { BookSearchResult } from "./api/book-search/route";
  */
 export function CoverSearchPicker({
   onPick,
-  placeholder = "🔍 Search Open Library for a cover…",
+  placeholder = club.text.coverSearchPlaceholder,
   autoFocus = false,
 }: {
   onPick: (cover: { url: string; title: string }) => void;
@@ -45,7 +46,7 @@ export function CoverSearchPicker({
         setResults((data.results ?? []).filter((r) => r.coverUrl));
         setOpen(true);
       } catch {
-        setSearchError("Couldn't search Open Library right now.");
+        setSearchError(club.text.searchError);
         setResults([]);
       } finally {
         setSearching(false);

@@ -45,7 +45,7 @@ jobs:
       - run: npm ci
 
       # NEXT_PUBLIC_* are baked into the build, so each club needs its own
-      # build. NEXT_PUBLIC_CLUB is unused until the club config (step 7).
+      # build. NEXT_PUBLIC_CLUB picks the club's texts in src/club.ts.
       - name: Build and deploy to Cloudflare Workers
         run: |
           npx opennextjs-cloudflare build

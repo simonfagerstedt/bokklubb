@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BookSearchResult } from "./api/book-search/route";
+import { club } from "@/club";
 
 const fieldClass =
   "col-span-2 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1";
@@ -55,7 +56,7 @@ export function BookSearchFields({
         setResults(data.results ?? []);
         setOpen(true);
       } catch {
-        setSearchError("Couldn't search Open Library right now.");
+        setSearchError(club.text.searchError);
         setResults([]);
       } finally {
         setSearching(false);
@@ -108,7 +109,7 @@ export function BookSearchFields({
           onChange={(e) => handleQueryChange(e.target.value)}
           onFocus={() => results.length > 0 && setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="🔍 Search Open Library to fill in the details below…"
+          placeholder={club.text.searchPlaceholder}
           className="w-full rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
         />
         {searching && (
@@ -165,7 +166,7 @@ export function BookSearchFields({
         name="author"
         value={author}
         onChange={(e) => setAuthor(e.target.value)}
-        placeholder="Author"
+        placeholder={club.text.creatorLabel}
         required
         className={fieldClass}
       />
@@ -173,7 +174,7 @@ export function BookSearchFields({
         name="cover_url"
         value={coverUrl}
         onChange={(e) => setCoverUrl(e.target.value)}
-        placeholder="Cover image URL"
+        placeholder={club.text.coverUrlPlaceholder}
         className="col-span-2 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
       />
       <input
