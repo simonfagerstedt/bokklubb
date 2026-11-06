@@ -281,10 +281,10 @@ function AdminLockedButton({ label }: { label: string }) {
 
 function Stars({ rating }: { rating: number }) {
   return (
-    <span className="text-amber-500" aria-label={`${rating} out of 5 stars`}>
+    <span className="text-amber-500" aria-label={`${rating} out of ${club.maxRating} stars`}>
       {"★".repeat(rating)}
       <span className="text-zinc-300 dark:text-zinc-700">
-        {"★".repeat(5 - rating)}
+        {"★".repeat(Math.max(0, club.maxRating - rating))}
       </span>
     </span>
   );
@@ -296,6 +296,9 @@ function Stars({ rating }: { rating: number }) {
 // Workers free plan's 10 ms CPU budget (error 1102), so the list grows in
 // steps through ?finished=N instead of rendering everything at once.
 const FINISHED_PAGE_SIZE = 10;
+
+// The grades a review can give, 1 to club.maxRating.
+const RATINGS = Array.from({ length: club.maxRating }, (_, i) => i + 1);
 
 export default async function Home({ searchParams }: PageProps<"/">) {
   const finishedParam = (await searchParams).finished;
@@ -512,7 +515,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                           <option value="" disabled>
                             Rate
                           </option>
-                          {[1, 2, 3, 4, 5].map((n) => (
+                          {RATINGS.map((n) => (
                             <option key={n} value={n}>
                               {n} ★
                             </option>
@@ -817,7 +820,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                                 <option value="" disabled>
                                   Rate
                                 </option>
-                                {[1, 2, 3, 4, 5].map((n) => (
+                                {RATINGS.map((n) => (
                                   <option key={n} value={n}>
                                     {n} ★
                                   </option>

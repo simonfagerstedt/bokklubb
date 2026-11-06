@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { club } from "@/club";
 
 async function requireMember() {
   const supabase = await createClient();
@@ -111,7 +112,7 @@ export async function addReview(bookId: string, formData: FormData) {
 
   const rating = Number(formData.get("rating"));
   const body = String(formData.get("body") ?? "").trim();
-  if (!rating || rating < 1 || rating > 5) return;
+  if (!Number.isInteger(rating) || rating < 1 || rating > club.maxRating) return;
 
   const { error } = await supabase
     .from("reviews")

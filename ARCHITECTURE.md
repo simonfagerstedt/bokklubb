@@ -58,7 +58,7 @@ A trigger (`handle_new_member`) inserts a row on every `auth.users` signup.
 | id | uuid, PK | |
 | book_id | uuid, FK → books | |
 | member_id | uuid, FK → members | |
-| rating | smallint | 1–5 |
+| rating | smallint | 1–6 in the database; each club's UI and Server Action cap it at `club.maxRating` (book 5, film 6) |
 | body | text, nullable | |
 | created_at | timestamptz | |
 
@@ -178,6 +178,7 @@ to every signed-in member.
 
 | Version | Name | What it did |
 | --- | --- | --- |
+| 20261106163000 | reviews_rating_up_to_6 | Widened `reviews.rating` check from 1–5 to 1–6 (the movie club grades 1–6) |
 | 20260930204752 | book_club_background_settings_grayscale | Added `background_settings.grayscale` (default `true`) |
 | 20260930153202 | book_club_background_settings_split_gap | Split `background_settings.gap_percent` into `gap_x_percent`/`gap_y_percent` |
 | 20260930151854 | book_club_background_settings | Added `background_settings` (single-row, public read, admin-only writes): collage column counts per breakpoint and gap |
