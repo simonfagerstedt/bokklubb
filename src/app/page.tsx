@@ -290,22 +290,19 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-// How many finished books/movies to render at first, and how many more
-// each "Show more" adds. Rendering every finished item (each with its
-// reviews, and for admins an edit form) is what pushes the page past the
-// Workers free plan's 10 ms CPU budget (error 1102), so the list grows in
-// steps through ?finished=N instead of rendering everything at once.
+// Finished books/movies are shown one page of 10 at a time (?page=N).
+// Rendering more at once (each with its reviews and rating form) is what
+// pushes the page past the Workers free plan's 10 ms CPU budget (error
+// 1102), so a page never renders more than this many, however long the
+// club's history gets.
 const FINISHED_PAGE_SIZE = 10;
 
 export default async function Home({ searchParams }: PageProps<"/">) {
   const params = await searchParams;
-  const finishedParam = params.finished;
-  const finishedShown = Math.max(
-    FINISHED_PAGE_SIZE,
-    Number.parseInt(
-      typeof finishedParam === "string" ? finishedParam : "",
-      10,
-    ) || FINISHED_PAGE_SIZE,
+  const requestedPage = Math.max(
+    1,
+    Number.parseInt(typeof params.page === "string" ? params.page : "", 10) ||
+      1,
   );
   // Admin-only forms (a book's edit form, the background images panel) are
   // only rendered when opened through ?edit=<id> / ?background=1, not for
@@ -314,12 +311,12 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const editId = typeof params.edit === "string" ? params.edit : null;
   const showBackground = params.background === "1";
   function pageHref(
-    opts: { edit?: string; background?: boolean; finished?: number },
+    opts: { edit?: string; background?: boolean; page?: number },
     anchor: string,
   ) {
     const q = new URLSearchParams();
-    const finished = opts.finished ?? finishedShown;
-    if (finished > FINISHED_PAGE_SIZE) q.set("finished", String(finished));
+    const page = opts.page ?? finishedPage;
+    if (page > 1) q.set("page", String(page));
     if (opts.edit) q.set("edit", opts.edit);
     if (opts.background) q.set("background", "1");
     const qs = q.toString();
@@ -394,6 +391,13 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         new Date(b.finished_at ?? b.created_at).getTime() -
         new Date(a.finished_at ?? a.created_at).getTime(),
     );
+
+  const finishedPages = Math.max(1, Math.ceil(read.length / FINISHED_PAGE_SIZE));
+  const finishedPage = Math.min(requestedPage, finishedPages);
+  const readOnPage = read.slice(
+    (finishedPage - 1) * FINISHED_PAGE_SIZE,
+    finishedPage * FINISHED_PAGE_SIZE,
+  );
 
   const reviewsByBook = new Map<string, Review[]>();
   for (const r of reviews ?? []) {
@@ -773,7 +777,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             <p className="text-sm text-zinc-500">Nothing finished yet.</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {read.slice(0, finishedShown).map((book) => {
+              {readOnPage.map((book) => {
                 const bookReviews = reviewsByBook.get(book.id) ?? [];
                 const avg = avgRating(book.id);
 
@@ -910,19 +914,32 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             </ul>
           )}
 
-          {read.length > finishedShown && (
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-              Showing {finishedShown} of {read.length}.{" "}
-              <a
-                href={pageHref(
-                  { finished: finishedShown + FINISHED_PAGE_SIZE },
-                  "finished",
-                )}
-                className="underline underline-offset-2"
-              >
-                Show {Math.min(FINISHED_PAGE_SIZE, read.length - finishedShown)} more
-              </a>
-            </p>
+          {finishedPages > 1 && (
+            <nav className="mt-3 flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+              {finishedPage > 1 ? (
+                <a
+                  href={pageHref({ page: finishedPage - 1 }, "finished")}
+                  className="underline underline-offset-2"
+                >
+                  ← Newer
+                </a>
+              ) : (
+                <span className="text-zinc-300 dark:text-zinc-700">← Newer</span>
+              )}
+              <span>
+                Page {finishedPage} of {finishedPages}
+              </span>
+              {finishedPage < finishedPages ? (
+                <a
+                  href={pageHref({ page: finishedPage + 1 }, "finished")}
+                  className="underline underline-offset-2"
+                >
+                  Older →
+                </a>
+              ) : (
+                <span className="text-zinc-300 dark:text-zinc-700">Older →</span>
+              )}
+            </nav>
           )}
 
           {isAdmin && (
