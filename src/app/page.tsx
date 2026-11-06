@@ -290,7 +290,22 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-export default async function Home() {
+// How many finished books/movies to render at first, and how many more
+// each "Show more" adds. Rendering every finished item (each with its
+// reviews, and for admins an edit form) is what pushes the page past the
+// Workers free plan's 10 ms CPU budget (error 1102), so the list grows in
+// steps through ?finished=N instead of rendering everything at once.
+const FINISHED_PAGE_SIZE = 10;
+
+export default async function Home({ searchParams }: PageProps<"/">) {
+  const finishedParam = (await searchParams).finished;
+  const finishedShown = Math.max(
+    FINISHED_PAGE_SIZE,
+    Number.parseInt(
+      typeof finishedParam === "string" ? finishedParam : "",
+      10,
+    ) || FINISHED_PAGE_SIZE,
+  );
   const supabase = await createClient();
 
   const [
@@ -716,7 +731,7 @@ export default async function Home() {
         </section>
 
         {/* Books read */}
-        <section>
+        <section id="finished">
           <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
             {club.text.finishedHeading}
           </h2>
@@ -725,7 +740,7 @@ export default async function Home() {
             <p className="text-sm text-zinc-500">Nothing finished yet.</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {read.map((book) => {
+              {read.slice(0, finishedShown).map((book) => {
                 const bookReviews = reviewsByBook.get(book.id) ?? [];
                 const avg = avgRating(book.id);
 
@@ -845,6 +860,18 @@ export default async function Home() {
                 );
               })}
             </ul>
+          )}
+
+          {read.length > finishedShown && (
+            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+              Showing {finishedShown} of {read.length}.{" "}
+              <a
+                href={`/?finished=${finishedShown + FINISHED_PAGE_SIZE}#finished`}
+                className="underline underline-offset-2"
+              >
+                Show {Math.min(FINISHED_PAGE_SIZE, read.length - finishedShown)} more
+              </a>
+            </p>
           )}
 
           {isAdmin && (
