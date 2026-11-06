@@ -2,6 +2,7 @@
 
 import { Fragment, useActionState } from "react";
 import { BookSearchFields } from "./BookSearchFields";
+import { club } from "@/club";
 
 type State = { resetKey: number; error: string | null };
 
@@ -48,7 +49,7 @@ export function SuggestBookForm({
         <BookSearchFields idPrefix="suggest" />
         <input
           name="pitch"
-          placeholder="Why should we read it? (optional)"
+          placeholder={club.text.pitchPlaceholder}
           className="col-span-2 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
         />
       </Fragment>
@@ -59,7 +60,7 @@ export function SuggestBookForm({
         disabled={pending}
         className="col-span-2 self-start rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black"
       >
-        {pending ? "Suggesting…" : "Suggest a book"}
+        {pending ? "Suggesting…" : club.text.suggestButton}
       </button>
     </form>
   );

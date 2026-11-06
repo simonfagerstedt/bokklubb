@@ -151,6 +151,7 @@ to every signed-in member.
 
 | Path | What it does |
 | --- | --- |
+| `src/club.ts` | Everything that differs between the two clubs built from this repo: Bokcirkeln (book club) and Filmklubben (movie club). Name, emoji, all book/movie wording and the fallback background collage. Picked at build time by `NEXT_PUBLIC_CLUB` (`book`, the default, or `film`), which the Deploy workflow sets per club |
 | `src/app/page.tsx` | The whole club page — currently reading, suggestions, books read, members, background-images admin panel — plus the faded book-cover background |
 | `src/app/actions.ts` | Server Actions: `addSuggestion`, `toggleVote`, `addReview`, `deleteReview`, `markAsCurrent`, `finishCurrentBook`, `updateBookDetails`, `addReadBook`, `hideSuggestion`, `unhideSuggestion`, `deleteBook`, `addBackgroundCover`, `replaceBackgroundCover`, `deleteBackgroundCover`, `reorderBackgroundCovers`, `updateBackgroundSettings`, `signOut` |
 | `src/app/BackgroundSettingsForm.tsx` | Admin-only form for the background collage's column counts and horizontal/vertical gap |

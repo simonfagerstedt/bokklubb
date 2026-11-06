@@ -24,6 +24,7 @@ import { BackgroundCoverAdmin } from "./BackgroundCoverAdmin";
 import { BackgroundSettingsForm } from "./BackgroundSettingsForm";
 import { FinishedAtField } from "./FinishedAtField";
 import { SuggestBookForm } from "./SuggestBookForm";
+import { club } from "@/club";
 
 type Member = { id: string; display_name: string | null; is_admin: boolean };
 type BackgroundCover = { id: string; cover_url: string; title: string | null };
@@ -41,33 +42,6 @@ type Review = {
   body: string | null;
   member_id: string;
 };
-// Fallback if the background_covers table is ever empty (e.g. an admin
-// removed everything) — a mix of classics and modern reads, not tied to
-// what the club is actually reading.
-const FALLBACK_BACKGROUND_COVERS = [
-  "https://covers.openlibrary.org/b/id/8467127-L.jpg", // Pride and Prejudice
-  "https://covers.openlibrary.org/b/id/12927145-L.jpg", // Circe
-  "https://covers.openlibrary.org/b/id/106239-L.jpg", // Moby-Dick
-  "https://covers.openlibrary.org/b/id/12816990-L.jpg", // Tomorrow, and Tomorrow, and Tomorrow
-  "https://covers.openlibrary.org/b/id/10616570-L.jpg", // Nineteen Eighty-Four
-  "https://covers.openlibrary.org/b/id/9158360-L.jpg", // Normal People
-  "https://covers.openlibrary.org/b/id/12622046-L.jpg", // Crime and Punishment
-  "https://covers.openlibrary.org/b/id/15208263-L.jpg", // Project Hail Mary
-  "https://covers.openlibrary.org/b/id/15098734-L.jpg", // Jane Eyre
-  "https://covers.openlibrary.org/b/id/12866714-L.jpg", // Babel
-  "https://covers.openlibrary.org/b/id/2325007-L.jpg", // Frankenstein
-  "https://covers.openlibrary.org/b/id/15212562-L.jpg", // The Overstory
-  "https://covers.openlibrary.org/b/id/8236262-L.jpg", // Anna Karenina
-  "https://covers.openlibrary.org/b/id/12446638-L.jpg", // The Song of Achilles
-  "https://covers.openlibrary.org/b/id/8238786-L.jpg", // The Great Gatsby
-  "https://covers.openlibrary.org/b/id/13011435-L.jpg", // Piranesi
-  "https://covers.openlibrary.org/b/id/13496213-L.jpg", // Wuthering Heights
-  "https://covers.openlibrary.org/b/id/8815122-L.jpg", // Educated
-  "https://covers.openlibrary.org/b/id/12622155-L.jpg", // Dracula
-  "https://covers.openlibrary.org/b/id/6533183-L.jpg", // Älskaren (L'Amant)
-  "https://covers.openlibrary.org/b/id/10871487-L.jpg", // Klara and the Sun
-];
-
 type Book = {
   id: string;
   title: string;
@@ -100,7 +74,15 @@ function BookCoverBackground({
   // (chasing a multiple of all three breakpoints' column counts at once,
   // with no sane ceiling) rendered well over a hundred tiles and blew that
   // budget, returning Cloudflare error 1102 ("exceeded resource limits").
-  const source = covers.length > 0 ? covers : FALLBACK_BACKGROUND_COVERS;
+  // Falls back to the club's built-in collage if the background_covers
+  // table is empty (e.g. an admin removed everything); a club without one
+  // gets a plain background.
+  const source = covers.length > 0 ? covers : club.fallbackBackgroundCovers;
+  if (source.length === 0) {
+    return (
+      <div className="fixed inset-0 -z-10 bg-zinc-50 dark:bg-black" aria-hidden="true" />
+    );
+  }
   const { colsMobile, colsTablet, colsDesktop, gapXPercent, gapYPercent, grayscale } =
     settings;
   const MAX_TILES = 60;
@@ -193,14 +175,14 @@ function BookEditForm({ book }: { book: Book }) {
         <input
           name="author"
           defaultValue={book.author}
-          placeholder="Author"
+          placeholder={club.text.creatorLabel}
           required
           className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1"
         />
         <input
           name="cover_url"
           defaultValue={book.cover_url ?? ""}
-          placeholder="Cover image URL"
+          placeholder={club.text.coverUrlPlaceholder}
           className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
         />
         <input
@@ -245,7 +227,7 @@ function BookEditForm({ book }: { book: Book }) {
           confirmText={`Delete "${book.title}"? This can't be undone.`}
         >
           <button className="rounded border border-red-300 px-3 py-1.5 text-red-600 dark:border-red-900 dark:text-red-400">
-            Delete book
+            {club.text.deleteItem}
           </button>
         </ConfirmSubmitForm>
       </div>
@@ -410,7 +392,7 @@ export default async function Home() {
       <header className="border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <span className="font-semibold text-zinc-900 dark:text-zinc-50">
-            📚 Bokcirkeln
+            {`${club.emoji} ${club.name}`}
           </span>
           {user ? (
             <div className="flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
@@ -439,7 +421,7 @@ export default async function Home() {
         {/* Currently reading */}
         <section>
           <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-            Currently reading
+            {club.text.currentHeading}
           </h2>
           {current ? (
             <div className="flex gap-5 rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
@@ -447,7 +429,7 @@ export default async function Home() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={current.cover_url}
-                  alt={`Cover of ${current.title}`}
+                  alt={club.text.coverAlt(current.title)}
                   className="h-40 w-28 shrink-0 rounded object-cover shadow-sm"
                 />
               )}
@@ -475,11 +457,11 @@ export default async function Home() {
                   {isAdmin ? (
                     <form action={finishCurrentBook.bind(null, current.id)}>
                       <button className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
-                        Mark as finished
+                        {club.text.markFinished}
                       </button>
                     </form>
                   ) : (
-                    <AdminLockedButton label="Mark as finished" />
+                    <AdminLockedButton label={club.text.markFinished} />
                   )}
                 </div>
               )}
@@ -487,7 +469,7 @@ export default async function Home() {
               {isAdmin && (
                 <details className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-900">
                   <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
-                    Edit book details
+                    {club.text.editDetails}
                   </summary>
                   <BookEditForm book={current} />
                 </details>
@@ -534,7 +516,7 @@ export default async function Home() {
                       {myReview && (
                         <ConfirmSubmitForm
                           action={deleteReview.bind(null, current.id)}
-                          confirmText="Delete your review of this book?"
+                          confirmText={club.text.deleteReviewConfirm}
                         >
                           <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
                             Delete
@@ -549,8 +531,7 @@ export default async function Home() {
             </div>
           ) : (
             <p className="text-sm text-zinc-500">
-              Nobody&apos;s reading anything right now — promote a suggestion
-              below.
+              {club.text.noCurrent}
             </p>
           )}
         </section>
@@ -558,7 +539,7 @@ export default async function Home() {
         {/* Suggestions */}
         <section>
           <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-            Suggestions for next book
+            {club.text.suggestionsHeading}
           </h2>
 
           <ul className="flex flex-col gap-2">
@@ -588,7 +569,7 @@ export default async function Home() {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={book.cover_url}
-                          alt={`Cover of ${book.title}`}
+                          alt={club.text.coverAlt(book.title)}
                           className="h-16 w-11 shrink-0 rounded object-cover shadow-sm"
                         />
                       )}
@@ -638,11 +619,11 @@ export default async function Home() {
                         (isAdmin ? (
                           <form action={markAsCurrent.bind(null, book.id)}>
                             <button className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
-                              Start reading
+                              {club.text.startCurrent}
                             </button>
                           </form>
                         ) : (
-                          user && <AdminLockedButton label="Start reading" />
+                          user && <AdminLockedButton label={club.text.startCurrent} />
                         ))}
                       {isAdmin && (
                         <ConfirmSubmitForm
@@ -677,7 +658,7 @@ export default async function Home() {
               <a href="/login" className="underline">
                 Sign in
               </a>{" "}
-              to suggest a book or vote.
+              {club.text.signInToSuggest}
             </p>
           )}
 
@@ -737,7 +718,7 @@ export default async function Home() {
         {/* Books read */}
         <section>
           <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-            Books read
+            {club.text.finishedHeading}
           </h2>
 
           {read.length === 0 ? (
@@ -757,7 +738,7 @@ export default async function Home() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={book.cover_url}
-                        alt={`Cover of ${book.title}`}
+                        alt={club.text.coverAlt(book.title)}
                         className="h-24 w-16 shrink-0 rounded object-cover shadow-sm"
                       />
                     )}
@@ -781,7 +762,7 @@ export default async function Home() {
                       </div>
                       {book.finished_at && (
                         <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                          finished{" "}
+                          {club.text.finishedPrefix}{" "}
                           {new Date(book.finished_at).toISOString().slice(0, 10)}
                         </p>
                       )}
@@ -840,7 +821,7 @@ export default async function Home() {
                             {myReview && (
                               <ConfirmSubmitForm
                                 action={deleteReview.bind(null, book.id)}
-                                confirmText="Delete your review of this book?"
+                                confirmText={club.text.deleteReviewConfirm}
                               >
                                 <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
                                   Delete
@@ -869,7 +850,7 @@ export default async function Home() {
           {isAdmin && (
             <details className="mt-3 rounded-lg border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
               <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
-                Add a book you&apos;ve already read
+                {club.text.addFinishedSummary}
               </summary>
               <AddReadBookForm action={addReadBook} />
             </details>
@@ -912,8 +893,7 @@ export default async function Home() {
               Background images
             </h2>
             <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
-              The faded cover collage behind the page. Search Open Library to
-              replace any of these, or add more, and drag to reorder.
+              {club.text.backgroundIntro}
             </p>
             <div className="mb-4">
               <BackgroundSettingsForm

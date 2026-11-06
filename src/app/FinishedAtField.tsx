@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { club } from "@/club";
 
 const MIN_YEAR = 1000;
 const MAX_YEAR = 2100;
@@ -61,7 +62,7 @@ export function FinishedAtField({
   return (
     <label className="col-span-2 flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400 sm:col-span-1">
       <span className="flex items-center gap-2">
-        Finished on
+        {club.text.finishedOn}
         <input
           ref={inputRef}
           name="finished_at"

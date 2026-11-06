@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { club } from "@/club";
 
 export const metadata: Metadata = {
-  title: "Bokcirkeln",
-  description: "Bokcirkeln",
+  title: club.name,
+  description: club.name,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ConfirmSubmitForm } from "./ConfirmSubmitForm";
 import { CoverSearchPicker } from "./CoverSearchPicker";
+import { club } from "@/club";
 
 type Cover = { id: string; cover_url: string; title: string | null };
 
@@ -76,7 +77,7 @@ export function BackgroundCoverAdmin({
     <div className="flex flex-col gap-3">
       {covers.length > 1 && (
         <p className="text-xs text-zinc-400 dark:text-zinc-500">
-          Drag a cover to reorder the collage.
+          {club.text.dragToReorder}
         </p>
       )}
       {reorderError && <p className="text-xs text-red-500">{reorderError}</p>}
@@ -129,7 +130,7 @@ export function BackgroundCoverAdmin({
                 </button>
                 <ConfirmSubmitForm
                   action={deleteAction.bind(null, cover.id)}
-                  confirmText="Remove this cover from the background?"
+                  confirmText={club.text.removeBackgroundCoverConfirm}
                 >
                   <button className="rounded border border-zinc-300 px-1.5 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-zinc-700 dark:hover:bg-red-950">
                     Remove
@@ -149,7 +150,7 @@ export function BackgroundCoverAdmin({
           onClick={() => setAdding(true)}
           className="self-start rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black"
         >
-          Add another cover
+          {club.text.addAnotherBackgroundCover}
         </button>
       )}
     </div>
@@ -199,7 +200,7 @@ function AddCoverForm({
         name="cover_url"
         value={coverUrl}
         onChange={(e) => setCoverUrl(e.target.value)}
-        placeholder="Cover image URL — or paste your own"
+        placeholder={club.text.backgroundCoverUrlPlaceholder}
         className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
       />
       <input
@@ -223,7 +224,7 @@ function AddCoverForm({
           disabled={!coverUrl.trim() || pending}
           className="rounded bg-black px-3 py-1.5 text-xs text-white disabled:opacity-50 dark:bg-white dark:text-black"
         >
-          {pending ? "Adding…" : "Add cover"}
+          {pending ? "Adding…" : club.text.addBackgroundCover}
         </button>
         <button
           type="button"
@@ -283,7 +284,7 @@ function ReplaceCoverForm({
         name="cover_url"
         value={coverUrl}
         onChange={(e) => setCoverUrl(e.target.value)}
-        placeholder="Cover image URL — or paste your own"
+        placeholder={club.text.backgroundCoverUrlPlaceholder}
         className="rounded border border-zinc-300 px-1.5 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
       />
       <input
