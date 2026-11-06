@@ -17,7 +17,9 @@ export type ClubConfig = {
   name: string;
   /** Shown before the name in the header. */
   emoji: string;
-  /** Name of the service the search boxes query, used in their texts. */
+  /** Which service the search boxes query (see src/lib/search). */
+  searchProvider: "openlibrary" | "tmdb";
+  /** Its name, used in the search texts. */
   searchProviderName: string;
   /**
    * Background collage used when the background_covers table is empty
@@ -68,6 +70,7 @@ const bookClub: ClubConfig = {
   kind: "book",
   name: "Bokcirkeln",
   emoji: "📚",
+  searchProvider: "openlibrary",
   searchProviderName: "Open Library",
   // A mix of classics and modern reads, not tied to what the club is
   // actually reading.
@@ -128,14 +131,13 @@ const bookClub: ClubConfig = {
   },
 };
 
-// Search still goes to Open Library until TMDB is wired up; the texts say
-// so honestly. Switch searchProviderName and the search texts with it.
-const filmSearch = "Open Library";
+const filmSearch = "TMDB";
 
 const filmClub: ClubConfig = {
   kind: "film",
   name: "Filmklubben",
   emoji: "🎬",
+  searchProvider: "tmdb",
   searchProviderName: filmSearch,
   // No fallback posters yet: a plain background until admins add some.
   fallbackBackgroundCovers: [],
