@@ -17,6 +17,8 @@ export type ClubConfig = {
   name: string;
   /** Shown before the name in the header. */
   emoji: string;
+  /** Highest grade in a review (1 to maxRating stars). The database allows up to 6. */
+  maxRating: number;
   /** Which service the search boxes query (see src/lib/search). */
   searchProvider: "openlibrary" | "tmdb";
   /** Its name, used in the search texts. */
@@ -70,6 +72,7 @@ const bookClub: ClubConfig = {
   kind: "book",
   name: "Bokcirkeln",
   emoji: "📚",
+  maxRating: 5,
   searchProvider: "openlibrary",
   searchProviderName: "Open Library",
   // A mix of classics and modern reads, not tied to what the club is
@@ -137,6 +140,7 @@ const filmClub: ClubConfig = {
   kind: "film",
   name: "Filmklubben",
   emoji: "🎬",
+  maxRating: 6,
   searchProvider: "tmdb",
   searchProviderName: filmSearch,
   // No fallback posters yet: a plain background until admins add some.
