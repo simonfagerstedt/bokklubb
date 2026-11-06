@@ -78,7 +78,8 @@ function findOverflow(page: Page) {
     for (const el of controls) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue; // not shown
-      if (getComputedStyle(el).visibility === "hidden") continue;
+      // Not shown, e.g. inside a closed <details>.
+      if (!el.checkVisibility({ visibilityProperty: true })) continue;
       if (r.left < -1 || r.right > width + 1) {
         const label = (
           el.textContent?.trim() ||

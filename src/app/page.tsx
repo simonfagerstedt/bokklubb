@@ -540,9 +540,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       Your take so far
                     </label>
                     <div className="flex items-center gap-2">
+                      {/* On phones the text gets a full-width line of its own, with
+                          the grade, Save and Delete below it; one row from sm up. */}
                       <form
                         action={addReview.bind(null, current.id)}
-                        className="flex min-w-0 flex-1 items-center gap-2"
+                        className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
                       >
                         <select
                           name="rating"
@@ -562,21 +564,27 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                           name="body"
                           defaultValue={myReview?.body ?? ""}
                           placeholder="Short review (optional)"
-                          className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                          className="order-first w-full min-w-0 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900 sm:order-none sm:w-auto sm:flex-1"
                         />
                         <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
                           Save
                         </button>
+                        {myReview && (
+                          <button
+                            form={`delete-review-${current.id}`}
+                            className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </form>
                       {myReview && (
                         <ConfirmSubmitForm
+                          id={`delete-review-${current.id}`}
                           action={deleteReview.bind(null, current.id)}
                           confirmText={club.text.deleteReviewConfirm}
-                        >
-                          <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
-                            Delete
-                          </button>
-                        </ConfirmSubmitForm>
+                          className="hidden"
+                        />
                       )}
                     </div>
                   </div>
@@ -845,9 +853,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                         );
                         return (
                           <div className="mt-2 flex items-center gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
+                            {/* On phones the text gets a full-width line of its own, with
+                                the grade, Save and Delete below it; one row from sm up. */}
                             <form
                               action={addReview.bind(null, book.id)}
-                              className="flex min-w-0 flex-1 items-center gap-2"
+                              className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
                             >
                               <select
                                 name="rating"
@@ -868,21 +878,27 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                                 name="body"
                                 defaultValue={myReview?.body ?? ""}
                                 placeholder={myReview ? "Edit your review" : "Add your review"}
-                                className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                                className="order-first w-full min-w-0 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900 sm:order-none sm:w-auto sm:flex-1"
                               />
                               <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
                                 Save
                               </button>
+                              {myReview && (
+                                <button
+                                  form={`delete-review-${book.id}`}
+                                  className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400"
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </form>
                             {myReview && (
                               <ConfirmSubmitForm
+                                id={`delete-review-${book.id}`}
                                 action={deleteReview.bind(null, book.id)}
                                 confirmText={club.text.deleteReviewConfirm}
-                              >
-                                <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
-                                  Delete
-                                </button>
-                              </ConfirmSubmitForm>
+                                className="hidden"
+                              />
                             )}
                           </div>
                         );
