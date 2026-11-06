@@ -142,13 +142,12 @@ const filmClub: ClubConfig = {
   // No fallback posters yet: a plain background until admins add some.
   fallbackBackgroundCovers: [],
   text: {
-    currentHeading: "Currently watching",
-    noCurrent:
-      "Nobody's watching anything right now — promote a suggestion below.",
+    currentHeading: "Next movie",
+    noCurrent: "No movie picked yet — promote a suggestion below.",
     markFinished: "Mark as watched",
     editDetails: "Edit movie details",
     suggestionsHeading: "Suggestions for next movie",
-    startCurrent: "Start watching",
+    startCurrent: "Make next movie",
     signInToSuggest: "to suggest a movie or vote.",
     pitchPlaceholder: "Why should we watch it? (optional)",
     suggestButton: "Suggest a movie",
