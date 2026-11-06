@@ -160,8 +160,9 @@ to every signed-in member.
 | `src/app/FinishedAtField.tsx` | Client component: the "Finished on" date field, validating a full "YYYY-MM-DD" with a sane year (1000–2100) as the person types — the same check the server applies, mirrored client-side so a bad value never reaches it |
 | `src/app/BackgroundCoverAdmin.tsx` | Admin-only panel for the background collage: drag-and-drop reorder, replace or remove any current cover, or add another, each via `CoverSearchPicker` |
 | `src/app/CoverSearchPicker.tsx` | Client component: a debounced "search Open Library for a cover" box (like `BookSearchFields`, but returns just a cover URL + caption); used by `BackgroundCoverAdmin` |
-| `src/app/api/book-search/route.ts` | Signed-in-only proxy to Open Library's search API (`openlibrary.org/search.json`), shaped to what `BookSearchFields`/`CoverSearchPicker` need |
-| `src/app/api/book-details/route.ts` | Signed-in-only proxy that fetches one Open Library work's description once a search result is picked, kept separate from the search route so typing doesn't fetch descriptions for results nobody chose |
+| `src/lib/search/` | The two search providers behind one interface: `openLibrary.ts` (book club) and `tmdb.ts` (movie club; Swedish titles/overviews with English fallback, director from credits, needs the `TMDB_API_KEY` Worker secret). `index.ts` picks one from `club.searchProvider` |
+| `src/app/api/book-search/route.ts` | Signed-in-only proxy to the club's search provider, shaped to what `BookSearchFields`/`CoverSearchPicker` need |
+| `src/app/api/book-details/route.ts` | Signed-in-only proxy that fetches one picked result's details (description; for movies also the director), kept separate from the search route so typing doesn't fetch details for results nobody chose |
 | `src/app/ConfirmSubmitForm.tsx` | Confirm-before-submit wrapper used for delete buttons (books, reviews, background covers) |
 | `src/app/login/page.tsx` | Magic-link + password sign-in |
 | `src/app/account/password/page.tsx` | Set or change password |

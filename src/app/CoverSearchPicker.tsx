@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { BookSearchResult } from "./api/book-search/route";
+import type { BookSearchResult } from "@/lib/search/types";
+import { resultSubtitle } from "./BookSearchFields";
 import { club } from "@/club";
 
 /**
@@ -108,8 +109,7 @@ export function CoverSearchPicker({
                     {r.title}
                   </span>
                   <span className="block text-xs text-zinc-500 dark:text-zinc-400">
-                    {r.author}
-                    {r.year ? ` — ${r.year}` : ""}
+                    {resultSubtitle(r)}
                   </span>
                 </span>
               </button>

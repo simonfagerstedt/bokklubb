@@ -911,6 +911,23 @@ export default async function Home() {
           </section>
         )}
       </main>
+
+      {/* Required by TMDB's API terms for the movie club. */}
+      {club.searchProvider === "tmdb" && (
+        <footer className="mx-auto max-w-3xl px-6 pb-10 text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="inline-block rounded bg-white/90 px-2 py-1 dark:bg-zinc-950/90">
+            Movie data and posters from{" "}
+            <a
+              href="https://www.themoviedb.org/"
+              className="underline underline-offset-2"
+            >
+              TMDB
+            </a>
+            . This product uses the TMDB API but is not endorsed or certified by
+            TMDB.
+          </p>
+        </footer>
+      )}
     </div>
   );
 }

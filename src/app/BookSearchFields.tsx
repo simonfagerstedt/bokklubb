@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { BookSearchResult } from "./api/book-search/route";
+import type { BookSearchResult } from "@/lib/search/types";
 import { club } from "@/club";
 
 const fieldClass =
   "col-span-2 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900 sm:col-span-1";
+
+/** "Author — 1999", or for a movie "Original title — 1999". */
+export function resultSubtitle(r: BookSearchResult) {
+  return [r.author || r.originalTitle, r.year].filter(Boolean).join(" — ");
+}
 
 /**
  * Title/author/cover/original-title/year/description fields for a book
@@ -80,6 +85,10 @@ export function BookSearchFields({
     setTitle(result.title);
     setAuthor(result.author);
     setCoverUrl(result.coverUrl ?? "");
+    // Books: Open Library has no original title, so keep whatever was typed.
+    if (club.searchProvider === "tmdb") {
+      setOriginalTitle(result.originalTitle ?? "");
+    }
     setPublishedYear(result.year ? String(result.year) : "");
     setOpen(false);
     setQuery("");
@@ -92,6 +101,10 @@ export function BookSearchFields({
       const data = await res.json();
       if (res.ok && data.description) {
         setDescription(data.description);
+      }
+      // Movies: the director is only known once a result is picked.
+      if (res.ok && data.author) {
+        setAuthor((current) => current || data.author);
       }
     } catch {
       // Description is a nice-to-have; leave it blank if this fails.
@@ -143,8 +156,7 @@ export function BookSearchFields({
                       {r.title}
                     </span>
                     <span className="block text-xs text-zinc-500 dark:text-zinc-400">
-                      {r.author}
-                      {r.year ? ` — ${r.year}` : ""}
+                      {resultSubtitle(r)}
                     </span>
                   </span>
                 </button>
