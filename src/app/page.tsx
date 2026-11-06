@@ -298,7 +298,8 @@ function Stars({ rating }: { rating: number }) {
 const FINISHED_PAGE_SIZE = 10;
 
 export default async function Home({ searchParams }: PageProps<"/">) {
-  const finishedParam = (await searchParams).finished;
+  const params = await searchParams;
+  const finishedParam = params.finished;
   const finishedShown = Math.max(
     FINISHED_PAGE_SIZE,
     Number.parseInt(
@@ -306,6 +307,24 @@ export default async function Home({ searchParams }: PageProps<"/">) {
       10,
     ) || FINISHED_PAGE_SIZE,
   );
+  // Admin-only forms (a book's edit form, the background images panel) are
+  // only rendered when opened through ?edit=<id> / ?background=1, not for
+  // every item on every load: rendering them all is what pushed the admin
+  // view past the Workers free plan's CPU budget (error 1102).
+  const editId = typeof params.edit === "string" ? params.edit : null;
+  const showBackground = params.background === "1";
+  function pageHref(
+    opts: { edit?: string; background?: boolean; finished?: number },
+    anchor: string,
+  ) {
+    const q = new URLSearchParams();
+    const finished = opts.finished ?? finishedShown;
+    if (finished > FINISHED_PAGE_SIZE) q.set("finished", String(finished));
+    if (opts.edit) q.set("edit", opts.edit);
+    if (opts.background) q.set("background", "1");
+    const qs = q.toString();
+    return `/${qs ? `?${qs}` : ""}#${anchor}`;
+  }
   const supabase = await createClient();
 
   const [
@@ -434,7 +453,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
 
       <main className="mx-auto flex max-w-3xl flex-col gap-10 px-6 py-10">
         {/* Currently reading */}
-        <section>
+        <section id="current">
           <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
             {club.text.currentHeading}
           </h2>
@@ -482,12 +501,26 @@ export default async function Home({ searchParams }: PageProps<"/">) {
               )}
 
               {isAdmin && (
-                <details className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-900">
-                  <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
-                    {club.text.editDetails}
-                  </summary>
-                  <BookEditForm book={current} />
-                </details>
+                <div className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-900">
+                  {editId === current.id ? (
+                    <>
+                      <a
+                        href={pageHref({}, "current")}
+                        className="text-sm text-zinc-500 underline underline-offset-2 dark:text-zinc-400"
+                      >
+                        Close
+                      </a>
+                      <BookEditForm book={current} />
+                    </>
+                  ) : (
+                    <a
+                      href={pageHref({ edit: current.id }, "current")}
+                      className="text-sm text-zinc-500 dark:text-zinc-400"
+                    >
+                      ▸ {club.text.editDetails}
+                    </a>
+                  )}
+                </div>
               )}
 
               {user && (() => {
@@ -747,6 +780,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                 return (
                   <li
                     key={book.id}
+                    id={`item-${book.id}`}
                     className="flex gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
                   >
                     {book.cover_url && (
@@ -848,12 +882,26 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       })()}
 
                       {isAdmin && (
-                        <details className="mt-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
-                          <summary className="cursor-pointer text-xs text-zinc-500 dark:text-zinc-400">
-                            Edit
-                          </summary>
-                          <BookEditForm book={book} />
-                        </details>
+                        <div className="mt-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
+                          {editId === book.id ? (
+                            <>
+                              <a
+                                href={pageHref({}, `item-${book.id}`)}
+                                className="text-xs text-zinc-500 underline underline-offset-2 dark:text-zinc-400"
+                              >
+                                Close
+                              </a>
+                              <BookEditForm book={book} />
+                            </>
+                          ) : (
+                            <a
+                              href={pageHref({ edit: book.id }, `item-${book.id}`)}
+                              className="text-xs text-zinc-500 dark:text-zinc-400"
+                            >
+                              ▸ Edit
+                            </a>
+                          )}
+                        </div>
                       )}
                     </div>
                   </li>
@@ -866,7 +914,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
               Showing {finishedShown} of {read.length}.{" "}
               <a
-                href={`/?finished=${finishedShown + FINISHED_PAGE_SIZE}#finished`}
+                href={pageHref(
+                  { finished: finishedShown + FINISHED_PAGE_SIZE },
+                  "finished",
+                )}
                 className="underline underline-offset-2"
               >
                 Show {Math.min(FINISHED_PAGE_SIZE, read.length - finishedShown)} more
@@ -914,13 +965,29 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </section>
 
         {/* Background images (admin only) */}
-        {isAdmin && (
-          <section>
+        {isAdmin && !showBackground && (
+          <section id="background">
+            <a
+              href={pageHref({ background: true }, "background")}
+              className="text-sm text-zinc-500 dark:text-zinc-400"
+            >
+              ▸ Manage background images
+            </a>
+          </section>
+        )}
+        {isAdmin && showBackground && (
+          <section id="background">
             <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
               Background images
             </h2>
             <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
-              {club.text.backgroundIntro}
+              {club.text.backgroundIntro}{" "}
+              <a
+                href={pageHref({}, "background")}
+                className="underline underline-offset-2"
+              >
+                Close
+              </a>
             </p>
             <div className="mb-4">
               <BackgroundSettingsForm
