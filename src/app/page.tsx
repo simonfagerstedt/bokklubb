@@ -290,25 +290,41 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-// How many finished books/movies to render at first, and how many more
-// each "Show more" adds. Rendering every finished item (each with its
-// reviews, and for admins an edit form) is what pushes the page past the
-// Workers free plan's 10 ms CPU budget (error 1102), so the list grows in
-// steps through ?finished=N instead of rendering everything at once.
+// Finished books/movies are shown one page of 10 at a time (?page=N).
+// Rendering more at once (each with its reviews and rating form) is what
+// pushes the page past the Workers free plan's 10 ms CPU budget (error
+// 1102), so a page never renders more than this many, however long the
+// club's history gets.
 const FINISHED_PAGE_SIZE = 10;
 
 // The grades a review can give, 1 to club.maxRating.
 const RATINGS = Array.from({ length: club.maxRating }, (_, i) => i + 1);
 
 export default async function Home({ searchParams }: PageProps<"/">) {
-  const finishedParam = (await searchParams).finished;
-  const finishedShown = Math.max(
-    FINISHED_PAGE_SIZE,
-    Number.parseInt(
-      typeof finishedParam === "string" ? finishedParam : "",
-      10,
-    ) || FINISHED_PAGE_SIZE,
+  const params = await searchParams;
+  const requestedPage = Math.max(
+    1,
+    Number.parseInt(typeof params.page === "string" ? params.page : "", 10) ||
+      1,
   );
+  // Admin-only forms (a book's edit form, the background images panel) are
+  // only rendered when opened through ?edit=<id> / ?background=1, not for
+  // every item on every load: rendering them all is what pushed the admin
+  // view past the Workers free plan's CPU budget (error 1102).
+  const editId = typeof params.edit === "string" ? params.edit : null;
+  const showBackground = params.background === "1";
+  function pageHref(
+    opts: { edit?: string; background?: boolean; page?: number },
+    anchor: string,
+  ) {
+    const q = new URLSearchParams();
+    const page = opts.page ?? finishedPage;
+    if (page > 1) q.set("page", String(page));
+    if (opts.edit) q.set("edit", opts.edit);
+    if (opts.background) q.set("background", "1");
+    const qs = q.toString();
+    return `/${qs ? `?${qs}` : ""}#${anchor}`;
+  }
   const supabase = await createClient();
 
   const [
@@ -379,6 +395,13 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         new Date(a.finished_at ?? a.created_at).getTime(),
     );
 
+  const finishedPages = Math.max(1, Math.ceil(read.length / FINISHED_PAGE_SIZE));
+  const finishedPage = Math.min(requestedPage, finishedPages);
+  const readOnPage = read.slice(
+    (finishedPage - 1) * FINISHED_PAGE_SIZE,
+    finishedPage * FINISHED_PAGE_SIZE,
+  );
+
   const reviewsByBook = new Map<string, Review[]>();
   for (const r of reviews ?? []) {
     const list = reviewsByBook.get(r.book_id) ?? [];
@@ -437,7 +460,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
 
       <main className="mx-auto flex max-w-3xl flex-col gap-10 px-6 py-10">
         {/* Currently reading */}
-        <section>
+        <section id="current">
           <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
             {club.text.currentHeading}
           </h2>
@@ -485,12 +508,26 @@ export default async function Home({ searchParams }: PageProps<"/">) {
               )}
 
               {isAdmin && (
-                <details className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-900">
-                  <summary className="cursor-pointer text-sm text-zinc-500 dark:text-zinc-400">
-                    {club.text.editDetails}
-                  </summary>
-                  <BookEditForm book={current} />
-                </details>
+                <div className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-900">
+                  {editId === current.id ? (
+                    <>
+                      <a
+                        href={pageHref({}, "current")}
+                        className="text-sm text-zinc-500 underline underline-offset-2 dark:text-zinc-400"
+                      >
+                        Close
+                      </a>
+                      <BookEditForm book={current} />
+                    </>
+                  ) : (
+                    <a
+                      href={pageHref({ edit: current.id }, "current")}
+                      className="text-sm text-zinc-500 dark:text-zinc-400"
+                    >
+                      ▸ {club.text.editDetails}
+                    </a>
+                  )}
+                </div>
               )}
 
               {user && (() => {
@@ -743,13 +780,14 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             <p className="text-sm text-zinc-500">Nothing finished yet.</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {read.slice(0, finishedShown).map((book) => {
+              {readOnPage.map((book) => {
                 const bookReviews = reviewsByBook.get(book.id) ?? [];
                 const avg = avgRating(book.id);
 
                 return (
                   <li
                     key={book.id}
+                    id={`item-${book.id}`}
                     className="flex gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
                   >
                     {book.cover_url && (
@@ -851,12 +889,26 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       })()}
 
                       {isAdmin && (
-                        <details className="mt-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
-                          <summary className="cursor-pointer text-xs text-zinc-500 dark:text-zinc-400">
-                            Edit
-                          </summary>
-                          <BookEditForm book={book} />
-                        </details>
+                        <div className="mt-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
+                          {editId === book.id ? (
+                            <>
+                              <a
+                                href={pageHref({}, `item-${book.id}`)}
+                                className="text-xs text-zinc-500 underline underline-offset-2 dark:text-zinc-400"
+                              >
+                                Close
+                              </a>
+                              <BookEditForm book={book} />
+                            </>
+                          ) : (
+                            <a
+                              href={pageHref({ edit: book.id }, `item-${book.id}`)}
+                              className="text-xs text-zinc-500 dark:text-zinc-400"
+                            >
+                              ▸ Edit
+                            </a>
+                          )}
+                        </div>
                       )}
                     </div>
                   </li>
@@ -865,16 +917,32 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             </ul>
           )}
 
-          {read.length > finishedShown && (
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-              Showing {finishedShown} of {read.length}.{" "}
-              <a
-                href={`/?finished=${finishedShown + FINISHED_PAGE_SIZE}#finished`}
-                className="underline underline-offset-2"
-              >
-                Show {Math.min(FINISHED_PAGE_SIZE, read.length - finishedShown)} more
-              </a>
-            </p>
+          {finishedPages > 1 && (
+            <nav className="mt-3 flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+              {finishedPage > 1 ? (
+                <a
+                  href={pageHref({ page: finishedPage - 1 }, "finished")}
+                  className="underline underline-offset-2"
+                >
+                  ← Newer
+                </a>
+              ) : (
+                <span className="text-zinc-300 dark:text-zinc-700">← Newer</span>
+              )}
+              <span>
+                Page {finishedPage} of {finishedPages}
+              </span>
+              {finishedPage < finishedPages ? (
+                <a
+                  href={pageHref({ page: finishedPage + 1 }, "finished")}
+                  className="underline underline-offset-2"
+                >
+                  Older →
+                </a>
+              ) : (
+                <span className="text-zinc-300 dark:text-zinc-700">Older →</span>
+              )}
+            </nav>
           )}
 
           {isAdmin && (
@@ -917,13 +985,29 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </section>
 
         {/* Background images (admin only) */}
-        {isAdmin && (
-          <section>
+        {isAdmin && !showBackground && (
+          <section id="background">
+            <a
+              href={pageHref({ background: true }, "background")}
+              className="text-sm text-zinc-500 dark:text-zinc-400"
+            >
+              ▸ Manage background images
+            </a>
+          </section>
+        )}
+        {isAdmin && showBackground && (
+          <section id="background">
             <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
               Background images
             </h2>
             <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
-              {club.text.backgroundIntro}
+              {club.text.backgroundIntro}{" "}
+              <a
+                href={pageHref({}, "background")}
+                className="underline underline-offset-2"
+              >
+                Close
+              </a>
             </p>
             <div className="mb-4">
               <BackgroundSettingsForm
