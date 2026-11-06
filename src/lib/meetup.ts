@@ -11,12 +11,29 @@ export type MeetupDate = {
 };
 export type MeetupDateVote = { meetup_date_id: string; member_id: string };
 
+// Intl.DateTimeFormat objects are expensive to create (around 1 ms each,
+// mostly loading locale and time zone data) but cheap to reuse, so they
+// are made once per Worker instance. Creating them on every call is what
+// pushed the page past the Workers free plan's 10 ms CPU budget (error
+// 1102) once a few meetup dates were suggested.
+const swedishDate = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Europe/Stockholm",
+});
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function formatter(options: Intl.DateTimeFormatOptions) {
+  const key = JSON.stringify(options);
+  let f = formatters.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", ...options });
+    formatters.set(key, f);
+  }
+  return f;
+}
+
 /** Today's date in Sweden, as "YYYY-MM-DD". */
 export function todayInSweden(): string {
   // sv-SE formats dates as YYYY-MM-DD.
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Stockholm",
-  }).format(new Date());
+  return swedishDate.format(new Date());
 }
 
 /**
@@ -26,16 +43,14 @@ export function todayInSweden(): string {
 export function formatMeetDate(isoDate: string, short = false): string {
   const date = new Date(`${isoDate}T12:00:00Z`);
   const sameYear = isoDate.slice(0, 4) === todayInSweden().slice(0, 4);
-  const format = (options: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", ...options }).format(date);
+  const style = short ? "short" : "long";
   // Weekday and date formatted apart: together, en-GB adds a comma
   // ("Tuesday, 25 May 2027") whenever the year is included.
-  const style = short ? "short" : "long";
-  return `${format({ weekday: style })} ${format({
+  return `${formatter({ weekday: style }).format(date)} ${formatter({
     day: "numeric",
     month: style,
     ...(sameYear ? {} : { year: "numeric" }),
-  })}`;
+  }).format(date)}`;
 }
 
 /** Member ids that voted for each suggested date, by date id. */
