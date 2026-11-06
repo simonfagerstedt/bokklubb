@@ -542,7 +542,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                     <div className="flex items-center gap-2">
                       <form
                         action={addReview.bind(null, current.id)}
-                        className="flex flex-1 items-center gap-2"
+                        className="flex min-w-0 flex-1 items-center gap-2"
                       >
                         <select
                           name="rating"
@@ -562,7 +562,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                           name="body"
                           defaultValue={myReview?.body ?? ""}
                           placeholder="Short review (optional)"
-                          className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                          className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                         />
                         <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
                           Save
@@ -811,7 +811,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                           />
                         </p>
                         {avg !== null && (
-                          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                          <span className="shrink-0 pl-2 text-sm whitespace-nowrap text-zinc-500 dark:text-zinc-400">
                             {avg.toFixed(1)} ★ ({bookReviews.length})
                           </span>
                         )}
@@ -847,7 +847,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                           <div className="mt-2 flex items-center gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
                             <form
                               action={addReview.bind(null, book.id)}
-                              className="flex flex-1 items-center gap-2"
+                              className="flex min-w-0 flex-1 items-center gap-2"
                             >
                               <select
                                 name="rating"
@@ -868,7 +868,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                                 name="body"
                                 defaultValue={myReview?.body ?? ""}
                                 placeholder={myReview ? "Edit your review" : "Add your review"}
-                                className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                                className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                               />
                               <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
                                 Save
