@@ -3,6 +3,9 @@
 // Only reads are supported; nothing the test does writes anything.
 //
 // Run: node e2e/fake-supabase.mjs   (listens on http://localhost:54321)
+//
+// FAKE_SUPABASE_STATE=between-items: nothing is current, as between
+// finishing one book/movie and picking the next (shows "Make next…").
 import http from "node:http";
 
 const ADMIN_ID = "00000000-0000-0000-0000-000000000001";
@@ -41,8 +44,14 @@ const titles = [
   ["The Substance", "Coralie Fargeat", null],
   ["Aftersun", "Charlotte Wells", null],
 ];
+/** "YYYY-MM-DD", n days from today. */
+const daysFromNow = (n) =>
+  new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
+const BETWEEN_ITEMS = process.env.FAKE_SUPABASE_STATE === "between-items";
+
 const statusOf = (i) =>
-  i === 0 ? "current" : i <= 3 ? "suggested" : i === 4 ? "hidden" : "read";
+  i === 0 ? (BETWEEN_ITEMS ? "suggested" : "current") : i <= 3 ? "suggested" : i === 4 ? "hidden" : "read";
 
 const books = titles.map(([title, author, original], i) => ({
   id: `b${i}`,
@@ -58,6 +67,7 @@ const books = titles.map(([title, author, original], i) => ({
   original_title: original,
   published_year: 1990 + i,
   added_by: i % 2 ? MEMBER_ID : ADMIN_ID,
+  meet_on: statusOf(i) === "current" ? daysFromNow(10) : null,
   finished_at: statusOf(i) === "read" ? `2025-${String(1 + (i % 12)).padStart(2, "0")}-15T00:00:00Z` : null,
   created_at: `2026-10-${String(1 + i).padStart(2, "0")}T00:00:00Z`,
 }));
@@ -95,6 +105,20 @@ const tables = {
     { book_id: "b1", member_id: MEMBER_ID },
     { book_id: "b1", member_id: OTHER_ID },
     { book_id: "b2", member_id: ADMIN_ID },
+  ],
+  // A tie between the first two dates, so the admin's "pick a date" menu
+  // shows up too.
+  meetup_dates: [
+    { id: "m1", meet_on: daysFromNow(7), suggested_by: ADMIN_ID },
+    { id: "m2", meet_on: daysFromNow(8), suggested_by: MEMBER_ID },
+    { id: "m3", meet_on: daysFromNow(200), suggested_by: OTHER_ID },
+  ],
+  meetup_date_votes: [
+    { meetup_date_id: "m1", member_id: ADMIN_ID },
+    { meetup_date_id: "m1", member_id: MEMBER_ID },
+    { meetup_date_id: "m2", member_id: MEMBER_ID },
+    { meetup_date_id: "m2", member_id: OTHER_ID },
+    { meetup_date_id: "m3", member_id: OTHER_ID },
   ],
   background_covers: Array.from({ length: 12 }, (_, i) => ({
     id: `c${i}`,

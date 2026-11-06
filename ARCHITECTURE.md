@@ -23,7 +23,7 @@ Next.js app, never directly to Supabase.
 
 ## Database schema
 
-Seven tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
+Nine tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
 project, all with row level security on (public read, writes scoped to the
 acting member or admin-only).
 
@@ -49,6 +49,7 @@ A trigger (`handle_new_member`) inserts a row on every `auth.users` signup.
 | pitch | text, nullable | why it was suggested |
 | added_by | uuid, FK → members | who suggested it |
 | finished_at | timestamptz, nullable | set when marked read |
+| meet_on | date, nullable | the meetup date, shown highlighted on the current item; set from the meetup date poll, or by an admin in its edit form |
 | created_at | timestamptz | |
 
 ### reviews
@@ -74,6 +75,24 @@ edits upsert).
 | created_at | timestamptz | |
 
 Composite primary key — one vote per member per suggestion.
+
+### meetup_dates, meetup_date_votes
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| meetup_dates.id | uuid, PK | |
+| meetup_dates.meet_on | date, unique | a suggested day for the next meetup |
+| meetup_dates.suggested_by | uuid, FK → members, nullable | |
+| meetup_date_votes.(meetup_date_id, member_id) | uuid, uuid, PK | FK → meetup_dates (cascade) and members |
+
+The "Next meetup" poll. Signed-in members suggest days (which also votes for
+them) and vote for every day they can make. Members can remove their own
+suggested days; admins can remove any, "Finish voting" (sets the current
+item's `meet_on` to the day with most votes) or "Reset". When an admin
+promotes a suggestion to current ("Start reading" / "Make next movie"), the
+leading day becomes its `meet_on`; on a tie the admin picks among the
+leaders, and with no suggested days `meet_on` stays empty. Applying a day
+clears the poll. Logic in `src/lib/meetup.ts` and the meetup actions.
 
 ### background_covers
 
@@ -153,13 +172,14 @@ to every signed-in member.
 | --- | --- |
 | `src/club.ts` | Everything that differs between the two clubs built from this repo: Bokcirkeln (book club) and Filmklubben (movie club). Name, emoji, all book/movie wording and the fallback background collage. Picked at build time by `NEXT_PUBLIC_CLUB` (`book`, the default, or `film`), which the Deploy workflow sets per club |
 | `src/app/page.tsx` | The whole club page — currently reading, suggestions, books read, members, background-images admin panel — plus the faded book-cover background |
-| `src/app/actions.ts` | Server Actions: `addSuggestion`, `toggleVote`, `addReview`, `deleteReview`, `markAsCurrent`, `finishCurrentBook`, `updateBookDetails`, `addReadBook`, `hideSuggestion`, `unhideSuggestion`, `deleteBook`, `addBackgroundCover`, `replaceBackgroundCover`, `deleteBackgroundCover`, `reorderBackgroundCovers`, `updateBackgroundSettings`, `signOut` |
+| `src/app/actions.ts` | Server Actions: `addSuggestion`, `toggleVote`, `addReview`, `deleteReview`, `markAsCurrent` (also applies the meetup poll's winner), `finishCurrentBook`, `updateBookDetails`, `addReadBook`, `hideSuggestion`, `unhideSuggestion`, `deleteBook`, `addBackgroundCover`, `replaceBackgroundCover`, `deleteBackgroundCover`, `reorderBackgroundCovers`, `updateBackgroundSettings`, `suggestMeetupDate`, `toggleMeetupVote`, `deleteMeetupDate`, `finishMeetupVote`, `resetMeetupDates`, `signOut` |
 | `src/app/BackgroundSettingsForm.tsx` | Admin-only form for the background collage's column counts and horizontal/vertical gap |
 | `src/app/SuggestBookForm.tsx`, `src/app/AddReadBookForm.tsx` | Client components for the two "add a book" forms; each clears itself (via a remount-on-success key) after a successful submit, and shows the error inline on failure without losing what was typed |
 | `src/app/BookSearchFields.tsx` | Client component: title/author/cover/description fields with a debounced "search Open Library" box above them that fills the fields in on pick; used inside both forms above |
 | `src/app/FinishedAtField.tsx` | Client component: the "Finished on" date field, validating a full "YYYY-MM-DD" with a sane year (1000–2100) as the person types — the same check the server applies, mirrored client-side so a bad value never reaches it |
 | `src/app/BackgroundCoverAdmin.tsx` | Admin-only panel for the background collage: drag-and-drop reorder, replace or remove any current cover, or add another, each via `CoverSearchPicker` |
 | `src/app/CoverSearchPicker.tsx` | Client component: a debounced "search Open Library for a cover" box (like `BookSearchFields`, but returns just a cover URL + caption); used by `BackgroundCoverAdmin` |
+| `src/lib/meetup.ts` | Meetup date poll helpers: leading date(s), Swedish "today", date formatting |
 | `src/lib/search/` | The two search providers behind one interface: `openLibrary.ts` (book club) and `tmdb.ts` (movie club; Swedish titles/overviews with English fallback, director from credits, needs the `TMDB_API_KEY` Worker secret). `index.ts` picks one from `club.searchProvider` |
 | `src/app/api/book-search/route.ts` | Signed-in-only proxy to the club's search provider, shaped to what `BookSearchFields`/`CoverSearchPicker` need |
 | `src/app/api/book-details/route.ts` | Signed-in-only proxy that fetches one picked result's details (description; for movies also the director), kept separate from the search route so typing doesn't fetch details for results nobody chose |
@@ -179,6 +199,7 @@ to every signed-in member.
 
 | Version | Name | What it did |
 | --- | --- | --- |
+| 20261106190000 | meetup_dates | Added `books.meet_on` and the `meetup_dates` / `meetup_date_votes` poll tables with RLS |
 | 20261106163000 | reviews_rating_up_to_6 | Widened `reviews.rating` check from 1–5 to 1–6 (the movie club grades 1–6) |
 | 20260930204752 | book_club_background_settings_grayscale | Added `background_settings.grayscale` (default `true`) |
 | 20260930153202 | book_club_background_settings_split_gap | Split `background_settings.gap_percent` into `gap_x_percent`/`gap_y_percent` |

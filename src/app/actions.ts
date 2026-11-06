@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { club } from "@/club";
+import {
+  leadingDates,
+  parseIsoDate,
+  todayInSweden,
+  type MeetupDate,
+  type MeetupDateVote,
+} from "@/lib/meetup";
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 async function requireMember() {
   const supabase = await createClient();
@@ -138,8 +147,48 @@ export async function deleteReview(bookId: string) {
   revalidatePath("/");
 }
 
-export async function markAsCurrent(bookId: string) {
+/**
+ * The meetup date the poll decided: the suggested date with most votes, or,
+ * on a tie, the leading date the admin picked (sent as "meet_on"). Null
+ * when nobody has suggested a date.
+ */
+async function decidedMeetDate(
+  supabase: Supabase,
+  formData: FormData | undefined,
+): Promise<string | null> {
+  const [{ data: dates, error }, { data: votes, error: votesError }] =
+    await Promise.all([
+      supabase.from("meetup_dates").select("id, meet_on, suggested_by"),
+      supabase.from("meetup_date_votes").select("meetup_date_id, member_id"),
+    ]);
+  if (error) throw new Error(error.message);
+  if (votesError) throw new Error(votesError.message);
+
+  const leaders = leadingDates(
+    (dates ?? []) as MeetupDate[],
+    (votes ?? []) as MeetupDateVote[],
+  );
+  if (leaders.length === 0) return null;
+  if (leaders.length === 1) return leaders[0];
+  const picked = String(formData?.get("meet_on") ?? "");
+  if (leaders.includes(picked)) return picked;
+  throw new Error(
+    "The meetup date vote is a tie. Reload the page and pick one of the leading dates.",
+  );
+}
+
+/** Empties the meetup date poll (votes go with their dates). Admins only. */
+async function clearMeetupDates(supabase: Supabase) {
+  const { error } = await supabase
+    .from("meetup_dates")
+    .delete()
+    .not("id", "is", null); // PostgREST refuses a delete with no filter
+  if (error) throw new Error(error.message);
+}
+
+export async function markAsCurrent(bookId: string, formData?: FormData) {
   const { supabase } = await requireAdmin();
+  const meetOn = await decidedMeetDate(supabase, formData);
 
   // Only one book is "current" at a time: bump whatever was current to
   // "read", then promote this one.
@@ -151,9 +200,11 @@ export async function markAsCurrent(bookId: string) {
 
   const { error } = await supabase
     .from("books")
-    .update({ status: "current" })
+    .update({ status: "current", meet_on: meetOn })
     .eq("id", bookId);
   if (error) throw new Error(error.message);
+
+  if (meetOn) await clearMeetupDates(supabase);
 
   revalidatePath("/");
 }
@@ -218,6 +269,16 @@ export async function updateBookDetails(bookId: string, formData: FormData) {
       publishedYear && Number.isFinite(publishedYear) ? publishedYear : null,
   };
 
+  // Only present on the current item's edit form.
+  if (formData.has("meet_on")) {
+    const raw = String(formData.get("meet_on") ?? "").trim();
+    const meetOn = raw ? parseIsoDate(raw) : null;
+    if (raw && !meetOn) {
+      throw new Error(`That doesn't look like a valid date: "${raw}".`);
+    }
+    updates.meet_on = meetOn;
+  }
+
   // Only present on the "read" books' edit form — don't touch it otherwise.
   if (formData.has("finished_at")) {
     updates.finished_at = parseFinishedAt(
@@ -271,6 +332,107 @@ export async function deleteBook(bookId: string) {
   const { supabase } = await requireAdmin();
   const { error } = await supabase.from("books").delete().eq("id", bookId);
   if (error) throw new Error(error.message);
+  revalidatePath("/");
+}
+
+export async function suggestMeetupDate(formData: FormData) {
+  const { supabase, userId } = await requireMember();
+
+  const raw = String(formData.get("meet_on") ?? "");
+  const meetOn = parseIsoDate(raw);
+  if (!meetOn) throw new Error(`That doesn't look like a valid date: "${raw}".`);
+  const today = todayInSweden();
+  if (meetOn < today) throw new Error("Pick a date from today onwards.");
+  if (Number(meetOn.slice(0, 4)) > Number(today.slice(0, 4)) + 2) {
+    throw new Error("That date is more than two years away.");
+  }
+
+  // Suggesting a date someone else already suggested just votes for it.
+  let { data: existing } = await supabase
+    .from("meetup_dates")
+    .select("id")
+    .eq("meet_on", meetOn)
+    .maybeSingle();
+  if (!existing) {
+    const { data, error } = await supabase
+      .from("meetup_dates")
+      .insert({ meet_on: meetOn, suggested_by: userId })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    existing = data;
+  }
+
+  // You can make the day you suggest; 23505 means you'd already voted.
+  const { error } = await supabase
+    .from("meetup_date_votes")
+    .insert({ meetup_date_id: existing.id, member_id: userId });
+  if (error && error.code !== "23505") throw new Error(error.message);
+
+  revalidatePath("/");
+}
+
+export async function toggleMeetupVote(meetupDateId: string) {
+  const { supabase, userId } = await requireMember();
+
+  const { data: existing } = await supabase
+    .from("meetup_date_votes")
+    .select("meetup_date_id")
+    .eq("meetup_date_id", meetupDateId)
+    .eq("member_id", userId)
+    .maybeSingle();
+
+  const { error } = existing
+    ? await supabase
+        .from("meetup_date_votes")
+        .delete()
+        .eq("meetup_date_id", meetupDateId)
+        .eq("member_id", userId)
+    : await supabase
+        .from("meetup_date_votes")
+        .insert({ meetup_date_id: meetupDateId, member_id: userId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/");
+}
+
+/** Your own suggested date, or any as admin (enforced by RLS). */
+export async function deleteMeetupDate(meetupDateId: string) {
+  const { supabase } = await requireMember();
+  const { error } = await supabase
+    .from("meetup_dates")
+    .delete()
+    .eq("id", meetupDateId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+}
+
+/** Sets the current item's meetup date to the poll's winner, then clears the poll. */
+export async function finishMeetupVote(formData: FormData) {
+  const { supabase } = await requireAdmin();
+  const { data: current } = await supabase
+    .from("books")
+    .select("id")
+    .eq("status", "current")
+    .maybeSingle();
+  // Without a current item, the poll waits for "Make next…" instead.
+  if (!current) return;
+  const meetOn = await decidedMeetDate(supabase, formData);
+  if (!meetOn) return;
+
+  const { error } = await supabase
+    .from("books")
+    .update({ meet_on: meetOn })
+    .eq("id", current.id);
+  if (error) throw new Error(error.message);
+
+  await clearMeetupDates(supabase);
+  revalidatePath("/");
+}
+
+export async function resetMeetupDates() {
+  const { supabase } = await requireAdmin();
+  await clearMeetupDates(supabase);
   revalidatePath("/");
 }
 

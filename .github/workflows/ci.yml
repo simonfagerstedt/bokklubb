@@ -51,3 +51,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
           NEXT_PUBLIC_SUPABASE_ANON_KEY: fake
       - run: npm run test:screens
+      # Again with nothing current, as between two books/movies.
+      - run: npm run test:screens
+        env:
+          FAKE_SUPABASE_STATE: between-items

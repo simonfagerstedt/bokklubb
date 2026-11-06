@@ -21,7 +21,11 @@ const MEMBER_ID = "00000000-0000-0000-0000-000000000002";
 
 type Who = "logged out" | "member" | "admin";
 
-const PAGES: { who: Who; path: string }[] = [
+// Nothing is current in this state (see e2e/fake-supabase.mjs), so there
+// is no current item to edit.
+const betweenItems = process.env.FAKE_SUPABASE_STATE === "between-items";
+
+const ALL_PAGES: { who: Who; path: string }[] = [
   { who: "logged out", path: "/" },
   { who: "logged out", path: "/?page=2" },
   { who: "logged out", path: "/login" },
@@ -33,6 +37,9 @@ const PAGES: { who: Who; path: string }[] = [
   { who: "admin", path: "/?edit=b5" }, // a finished item
   { who: "admin", path: "/?background=1" },
 ];
+const PAGES = betweenItems
+  ? ALL_PAGES.filter((p) => p.path !== "/?edit=b0")
+  : ALL_PAGES;
 
 /** Signs the browser in as a fake user, the way @supabase/ssr stores it. */
 async function signIn(page: Page, userId: string) {
