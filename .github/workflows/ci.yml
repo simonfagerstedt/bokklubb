@@ -24,3 +24,34 @@ jobs:
           # Real values are only needed at runtime (set as Worker vars).
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+
+  # Every page must fit phones to desktops without sideways scrolling or
+  # buttons off screen (e2e/screen-sizes.spec.ts), for both clubs' texts.
+  # Runs against a fake Supabase, so no secrets or real data are involved.
+  screen-sizes:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        club: [book, film]
+    name: screen-sizes (${{ matrix.club }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_CLUB: ${{ matrix.club }}
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: fake
+      - run: npm run test:screens
+      # Again with nothing current, as between two books/movies.
+      - run: npm run test:screens
+        env:
+          FAKE_SUPABASE_STATE: between-items

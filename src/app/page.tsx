@@ -17,6 +17,11 @@ import {
   reorderBackgroundCovers,
   updateBackgroundSettings,
   signOut,
+  suggestMeetupDate,
+  toggleMeetupVote,
+  deleteMeetupDate,
+  finishMeetupVote,
+  resetMeetupDates,
 } from "./actions";
 import { ConfirmSubmitForm } from "./ConfirmSubmitForm";
 import { AddReadBookForm } from "./AddReadBookForm";
@@ -25,6 +30,14 @@ import { BackgroundSettingsForm } from "./BackgroundSettingsForm";
 import { FinishedAtField } from "./FinishedAtField";
 import { SuggestBookForm } from "./SuggestBookForm";
 import { club } from "@/club";
+import {
+  formatMeetDate,
+  leadingDates,
+  todayInSweden,
+  votersByDate,
+  type MeetupDate,
+  type MeetupDateVote,
+} from "@/lib/meetup";
 
 type Member = { id: string; display_name: string | null; is_admin: boolean };
 type BackgroundCover = { id: string; cover_url: string; title: string | null };
@@ -54,6 +67,8 @@ type Book = {
   published_year: number | null;
   added_by: string | null;
   finished_at: string | null;
+  /** The meetup date ("YYYY-MM-DD"), set on the current item. */
+  meet_on: string | null;
   created_at: string;
 };
 
@@ -205,6 +220,17 @@ function BookEditForm({ book }: { book: Book }) {
           rows={2}
           className="col-span-2 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
         />
+        {book.status === "current" && (
+          <label className="col-span-2 flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+            Meetup date
+            <input
+              name="meet_on"
+              type="date"
+              defaultValue={book.meet_on ?? ""}
+              className="min-w-0 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+        )}
         {book.status === "read" && (
           <FinishedAtField
             defaultValue={
@@ -264,6 +290,59 @@ function BookMeta({
       {originalTitle && publishedYear && ", "}
       {publishedYear})
     </span>
+  );
+}
+
+/**
+ * An admin button that also settles the meetup date poll. With a clear
+ * leader (or no poll) it's a plain button; on a tie it opens a small menu
+ * of the leading dates, and the admin's pick is sent as "meet_on".
+ */
+function MeetDateChoiceButton({
+  action,
+  leaders,
+  label,
+  className,
+  menuAlign,
+}: {
+  action: (formData: FormData) => void;
+  leaders: string[];
+  label: string;
+  className: string;
+  /** Which edge of the button the tie menu lines up with. */
+  menuAlign: "left" | "right";
+}) {
+  if (leaders.length <= 1) {
+    return (
+      <form action={action}>
+        {leaders[0] && <input type="hidden" name="meet_on" value={leaders[0]} />}
+        <button className={className}>{label}</button>
+      </form>
+    );
+  }
+  return (
+    <details className="relative">
+      <summary
+        className={`${className} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
+      >
+        {label} ▾
+      </summary>
+      <div
+        className={`absolute ${menuAlign === "left" ? "left-0" : "right-0"} z-10 mt-1 flex w-max flex-col gap-1 rounded-lg border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-800 dark:bg-zinc-950`}
+      >
+        <p className="px-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Tied. Which date?
+        </p>
+        {leaders.map((d) => (
+          <form key={d} action={action}>
+            <input type="hidden" name="meet_on" value={d} />
+            <button className="w-full rounded px-2 py-1 text-left text-sm text-zinc-800 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900">
+              📅 {formatMeetDate(d, true)}
+            </button>
+          </form>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -335,12 +414,14 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     { data: votes },
     { data: backgroundCovers },
     { data: backgroundSettingsRow },
+    { data: meetupDateRows },
+    { data: meetupVoteRows },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase
       .from("books")
       .select(
-        "id, title, author, status, pitch, cover_url, description, original_title, published_year, added_by, finished_at, created_at",
+        "id, title, author, status, pitch, cover_url, description, original_title, published_year, added_by, finished_at, meet_on, created_at",
       )
       .order("created_at", { ascending: false }),
     supabase.from("members").select("id, display_name, is_admin"),
@@ -360,6 +441,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
       )
       .eq("id", true)
       .maybeSingle(),
+    supabase
+      .from("meetup_dates")
+      .select("id, meet_on, suggested_by")
+      .order("meet_on", { ascending: true }),
+    supabase.from("meetup_date_votes").select("meetup_date_id, member_id"),
   ]);
 
   const user = userData.user;
@@ -415,6 +501,12 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     list.push(v.member_id);
     votesByBook.set(v.book_id, list);
   }
+
+  const meetupDates = (meetupDateRows ?? []) as MeetupDate[];
+  const meetupVotes = (meetupVoteRows ?? []) as MeetupDateVote[];
+  const meetupVoters = votersByDate(meetupVotes);
+  const meetupLeaders = leadingDates(meetupDates, meetupVotes);
+  const today = todayInSweden();
 
   function avgRating(bookId: string) {
     const list = reviewsByBook.get(bookId) ?? [];
@@ -487,6 +579,18 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                   </>
                 )}
               </p>
+              {current.meet_on ? (
+                <p className="mt-3 inline-flex items-center gap-2 rounded-md bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900">
+                  📅 We meet {formatMeetDate(current.meet_on)}
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+                  📅 No meetup date yet.{" "}
+                  <a href="#meetup" className="underline underline-offset-2">
+                    Suggest one
+                  </a>
+                </p>
+              )}
               {current.description && (
                 <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
                   {current.description}
@@ -540,9 +644,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       Your take so far
                     </label>
                     <div className="flex items-center gap-2">
+                      {/* On phones the text gets a full-width line of its own, with
+                          the grade, Save and Delete below it; one row from sm up. */}
                       <form
                         action={addReview.bind(null, current.id)}
-                        className="flex min-w-0 flex-1 items-center gap-2"
+                        className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
                       >
                         <select
                           name="rating"
@@ -562,21 +668,27 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                           name="body"
                           defaultValue={myReview?.body ?? ""}
                           placeholder="Short review (optional)"
-                          className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                          className="order-first w-full min-w-0 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900 sm:order-none sm:w-auto sm:flex-1"
                         />
                         <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
                           Save
                         </button>
+                        {myReview && (
+                          <button
+                            form={`delete-review-${current.id}`}
+                            className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </form>
                       {myReview && (
                         <ConfirmSubmitForm
+                          id={`delete-review-${current.id}`}
                           action={deleteReview.bind(null, current.id)}
                           confirmText={club.text.deleteReviewConfirm}
-                        >
-                          <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
-                            Delete
-                          </button>
-                        </ConfirmSubmitForm>
+                          className="hidden"
+                        />
                       )}
                     </div>
                   </div>
@@ -589,6 +701,141 @@ export default async function Home({ searchParams }: PageProps<"/">) {
               {club.text.noCurrent}
             </p>
           )}
+        </section>
+
+        {/* Meetup date poll */}
+        <section id="meetup">
+          <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+            Next meetup
+          </h2>
+          <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+            {meetupDates.length === 0 ? (
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                No dates suggested yet. Suggest a day that works for you, then
+                vote for every day you can make.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {meetupDates.map((d) => {
+                  const voters = meetupVoters.get(d.id) ?? [];
+                  const iVoted = user ? voters.includes(user.id) : false;
+                  const leading =
+                    voters.length > 0 && meetupLeaders.includes(d.meet_on);
+                  const canDelete =
+                    isAdmin || (user && d.suggested_by === user.id);
+                  return (
+                    <li
+                      key={d.id}
+                      className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 dark:bg-zinc-950"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-zinc-900 dark:text-zinc-50">
+                          {formatMeetDate(d.meet_on)}
+                          {leading && (
+                            <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                              {meetupLeaders.length > 1 ? "tied" : "leading"}
+                            </span>
+                          )}
+                        </p>
+                        {voters.length > 0 && (
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                            {voters
+                              .map((id) => membersById.get(id)?.display_name ?? "?")
+                              .join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {user ? (
+                          <form action={toggleMeetupVote.bind(null, d.id)}>
+                            <button
+                              title={iVoted ? "I can't make it after all" : "I can make it"}
+                              className={`rounded border px-2 py-1 text-sm ${
+                                iVoted
+                                  ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
+                                  : "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+                              }`}
+                            >
+                              ✓ {voters.length}
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="text-sm text-zinc-400">
+                            ✓ {voters.length}
+                          </span>
+                        )}
+                        {canDelete && (
+                          <ConfirmSubmitForm
+                            action={deleteMeetupDate.bind(null, d.id)}
+                            confirmText={`Remove ${formatMeetDate(d.meet_on)} and its votes?`}
+                          >
+                            <button
+                              title="Remove this date"
+                              className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+                            >
+                              ✕
+                            </button>
+                          </ConfirmSubmitForm>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {user ? (
+              <form
+                action={suggestMeetupDate}
+                className="mt-3 flex flex-wrap items-center gap-2"
+              >
+                <input
+                  type="date"
+                  name="meet_on"
+                  min={today}
+                  required
+                  aria-label="Meetup date"
+                  className="min-w-0 rounded border border-zinc-300 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                />
+                <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
+                  Suggest date
+                </button>
+              </form>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500">
+                <a href="/login" className="underline">
+                  Sign in
+                </a>{" "}
+                to suggest a date or vote.
+              </p>
+            )}
+
+            {isAdmin && meetupDates.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-amber-200 pt-3 text-sm dark:border-amber-900">
+                {current ? (
+                  <MeetDateChoiceButton
+                    action={finishMeetupVote}
+                    leaders={meetupLeaders}
+                    label="Finish voting"
+                    menuAlign="left"
+                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+                  />
+                ) : (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    The leading date is used when you press “{club.text.startCurrent}”.
+                  </p>
+                )}
+                <ConfirmSubmitForm
+                  action={resetMeetupDates}
+                  confirmText="Remove all suggested dates and votes?"
+                >
+                  <button className="rounded border border-red-300 bg-white px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:bg-zinc-950 dark:text-red-400">
+                    Reset
+                  </button>
+                </ConfirmSubmitForm>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Suggestions */}
@@ -617,7 +864,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                 return (
                   <li
                     key={book.id}
-                    className="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                    className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       {book.cover_url && (
@@ -652,7 +899,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                         <BookDescription description={book.description} />
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 self-end sm:self-auto">
                       {user ? (
                         <form action={toggleVote.bind(null, book.id)}>
                           <button
@@ -672,11 +919,13 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       )}
                       {!current &&
                         (isAdmin ? (
-                          <form action={markAsCurrent.bind(null, book.id)}>
-                            <button className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
-                              {club.text.startCurrent}
-                            </button>
-                          </form>
+                          <MeetDateChoiceButton
+                            action={markAsCurrent.bind(null, book.id)}
+                            leaders={meetupLeaders}
+                            label={club.text.startCurrent}
+                            menuAlign="right"
+                            className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+                          />
                         ) : (
                           user && <AdminLockedButton label={club.text.startCurrent} />
                         ))}
@@ -726,7 +975,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                 {hiddenSuggestions.map((book) => (
                   <li
                     key={book.id}
-                    className="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                    className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
                   >
                     <div>
                       <p className="font-medium text-zinc-900 dark:text-zinc-50">
@@ -747,7 +996,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                       <BookDescription description={book.description} />
                     </div>
                     {isAdmin && (
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 self-end sm:self-auto">
                         <form action={unhideSuggestion.bind(null, book.id)}>
                           <button className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
                             Unhide
@@ -845,9 +1094,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                         );
                         return (
                           <div className="mt-2 flex items-center gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-900">
+                            {/* On phones the text gets a full-width line of its own, with
+                                the grade, Save and Delete below it; one row from sm up. */}
                             <form
                               action={addReview.bind(null, book.id)}
-                              className="flex min-w-0 flex-1 items-center gap-2"
+                              className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
                             >
                               <select
                                 name="rating"
@@ -868,21 +1119,27 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                                 name="body"
                                 defaultValue={myReview?.body ?? ""}
                                 placeholder={myReview ? "Edit your review" : "Add your review"}
-                                className="min-w-0 flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                                className="order-first w-full min-w-0 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900 sm:order-none sm:w-auto sm:flex-1"
                               />
                               <button className="rounded bg-black px-3 py-1.5 text-sm text-white dark:bg-white dark:text-black">
                                 Save
                               </button>
+                              {myReview && (
+                                <button
+                                  form={`delete-review-${book.id}`}
+                                  className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400"
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </form>
                             {myReview && (
                               <ConfirmSubmitForm
+                                id={`delete-review-${book.id}`}
                                 action={deleteReview.bind(null, book.id)}
                                 confirmText={club.text.deleteReviewConfirm}
-                              >
-                                <button className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400">
-                                  Delete
-                                </button>
-                              </ConfirmSubmitForm>
+                                className="hidden"
+                              />
                             )}
                           </div>
                         );
