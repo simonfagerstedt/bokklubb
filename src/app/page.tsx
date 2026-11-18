@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import {
   addSuggestion,
@@ -22,6 +23,7 @@ import {
   deleteMeetupDate,
   finishMeetupVote,
   resetMeetupDates,
+  setReadingStatus,
 } from "./actions";
 import { ConfirmSubmitForm } from "./ConfirmSubmitForm";
 import { AddReadBookForm } from "./AddReadBookForm";
@@ -346,6 +348,167 @@ function MeetDateChoiceButton({
   );
 }
 
+type ReadingStatus = "planning" | "finished";
+
+/** Member names, the signed-in member's own name highlighted. */
+function MemberNames({
+  ids,
+  myId,
+  membersById,
+}: {
+  ids: string[];
+  myId: string | undefined;
+  membersById: Map<string, Member>;
+}) {
+  if (ids.length === 0) {
+    return <span className="text-zinc-400 dark:text-zinc-500">Nobody yet</span>;
+  }
+  return (
+    <>
+      {ids.map((id, i) => (
+        <span key={id}>
+          {i > 0 && ", "}
+          <span
+            className={
+              id === myId
+                ? "rounded bg-amber-100 px-1 font-medium text-amber-900 dark:bg-amber-900/60 dark:text-amber-100"
+                : undefined
+            }
+          >
+            {membersById.get(id)?.display_name ?? "?"}
+          </span>
+        </span>
+      ))}
+    </>
+  );
+}
+
+/**
+ * One reading/attendance checkbox. It's a small form so it works without
+ * any client JavaScript: ticking sends this box's status, unticking sends
+ * "none". In the book club the two boxes are one status, so ticking one
+ * unticks the other.
+ */
+function StatusBox({
+  bookId,
+  status,
+  label,
+  checked,
+  signedIn,
+  names,
+}: {
+  bookId: string;
+  status: ReadingStatus;
+  label: string;
+  checked: boolean;
+  signedIn: boolean;
+  names: ReactNode;
+}) {
+  const box = (
+    <span
+      aria-hidden="true"
+      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs ${
+        checked
+          ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
+          : "border-zinc-400 bg-white dark:border-zinc-600 dark:bg-zinc-900"
+      }`}
+    >
+      {checked && "✓"}
+    </span>
+  );
+  return (
+    <div>
+      {signedIn ? (
+        <form action={setReadingStatus.bind(null, bookId)}>
+          <input type="hidden" name="status" value={checked ? "none" : status} />
+          <button
+            role="checkbox"
+            aria-checked={checked}
+            className="flex items-start gap-2 text-left text-sm text-zinc-800 dark:text-zinc-200"
+          >
+            {box}
+            <span>{label}</span>
+          </button>
+        </form>
+      ) : (
+        <p className="flex items-start gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+          {box}
+          <span>{label}</span>
+        </p>
+      )}
+      <p className="mt-1 ml-7 text-xs text-zinc-500 dark:text-zinc-400">{names}</p>
+    </div>
+  );
+}
+
+/**
+ * Book club: how many of the members reading (or planning to) have
+ * finished, as a ring. Plain server-rendered SVG, no chart library.
+ */
+function ReadingProgress({ finished, total }: { finished: number; total: number }) {
+  if (total === 0) {
+    return (
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        Nobody has said they&apos;re reading it yet. Tick a box above.
+      </p>
+    );
+  }
+  const percent = Math.round((finished / total) * 100);
+  const r = 40;
+  const circumference = 2 * Math.PI * r;
+  return (
+    <div className="flex items-center gap-5 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+      <svg
+        viewBox="0 0 100 100"
+        className="h-24 w-24 shrink-0 -rotate-90"
+        role="img"
+        aria-label={`${percent}% finished`}
+      >
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          strokeWidth="14"
+          className="stroke-zinc-200 dark:stroke-zinc-800"
+        />
+        {finished > 0 && (
+          <circle
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            strokeWidth="14"
+            strokeDasharray={`${(finished / total) * circumference} ${circumference}`}
+            className="stroke-emerald-500 dark:stroke-emerald-400"
+          />
+        )}
+        <text
+          x="50"
+          y="50"
+          textAnchor="middle"
+          dominantBaseline="central"
+          transform="rotate(90 50 50)"
+          className="fill-zinc-900 text-[20px] font-semibold dark:fill-zinc-50"
+        >
+          {percent}%
+        </text>
+      </svg>
+      <div className="min-w-0 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="font-medium text-zinc-900 dark:text-zinc-50">
+          {finished} of {total} finished ({percent}%)
+        </p>
+        <p className="mt-1">
+          <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+          Finished
+          <span className="mr-1 ml-3 inline-block h-2.5 w-2.5 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+          Still reading
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function AdminLockedButton({ label }: { label: string }) {
   return (
     <button
@@ -416,6 +579,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     { data: backgroundSettingsRow },
     { data: meetupDateRows },
     { data: meetupVoteRows },
+    { data: readingStatusRows },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase
@@ -446,6 +610,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
       .select("id, meet_on, suggested_by")
       .order("meet_on", { ascending: true }),
     supabase.from("meetup_date_votes").select("meetup_date_id, member_id"),
+    supabase
+      .from("reading_status")
+      .select("book_id, member_id, status")
+      .order("updated_at", { ascending: true }),
   ]);
 
   const user = userData.user;
@@ -507,6 +675,22 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const meetupVoters = votersByDate(meetupVotes);
   const meetupLeaders = leadingDates(meetupDates, meetupVotes);
   const today = todayInSweden();
+
+  // Who's reading/attending the current item, in the order they ticked.
+  const planningIds: string[] = [];
+  const finishedIds: string[] = [];
+  for (const row of readingStatusRows ?? []) {
+    if (!current || row.book_id !== current.id) continue;
+    if (row.status === "finished") finishedIds.push(row.member_id);
+    else planningIds.push(row.member_id);
+  }
+  const myStatus: ReadingStatus | null = user
+    ? finishedIds.includes(user.id)
+      ? "finished"
+      : planningIds.includes(user.id)
+        ? "planning"
+        : null
+    : null;
 
   function avgRating(bookId: string) {
     const list = reviewsByBook.get(bookId) ?? [];
@@ -701,7 +885,57 @@ export default async function Home({ searchParams }: PageProps<"/">) {
               {club.text.noCurrent}
             </p>
           )}
+          {current && (
+            <div
+              id="status"
+              className="mt-3 flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+            >
+              <StatusBox
+                bookId={current.id}
+                status="planning"
+                label={club.text.statusPlanning}
+                checked={myStatus === "planning"}
+                signedIn={!!user}
+                names={
+                  <MemberNames
+                    ids={planningIds}
+                    myId={user?.id}
+                    membersById={membersById}
+                  />
+                }
+              />
+              {club.text.statusFinished && (
+                <StatusBox
+                  bookId={current.id}
+                  status="finished"
+                  label={club.text.statusFinished}
+                  checked={myStatus === "finished"}
+                  signedIn={!!user}
+                  names={
+                    <MemberNames
+                      ids={finishedIds}
+                      myId={user?.id}
+                      membersById={membersById}
+                    />
+                  }
+                />
+              )}
+            </div>
+          )}
         </section>
+
+        {/* Book club: share of readers who have finished */}
+        {current && club.text.statusFinished && (
+          <section id="progress">
+            <h2 className="mb-3 text-sm font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+              Reading progress
+            </h2>
+            <ReadingProgress
+              finished={finishedIds.length}
+              total={planningIds.length + finishedIds.length}
+            />
+          </section>
+        )}
 
         {/* Meetup date poll */}
         <section id="meetup">

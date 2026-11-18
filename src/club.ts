@@ -35,6 +35,10 @@ export type ClubConfig = {
     noCurrent: string;
     markFinished: string;
     editDetails: string;
+    // Reading/attendance status checkboxes under "Currently …"
+    statusPlanning: string;
+    /** The "finished" box; null where there's only the one box (movie club). */
+    statusFinished: string | null;
     // Suggestions section
     suggestionsHeading: string;
     startCurrent: string;
@@ -106,6 +110,8 @@ const bookClub: ClubConfig = {
       "Nobody's reading anything right now — promote a suggestion below.",
     markFinished: "Mark as finished",
     editDetails: "Edit book details",
+    statusPlanning: "I am reading/planning to read the book and attend the meetup",
+    statusFinished: "I have finished the book and will attend the meetup",
     suggestionsHeading: "Suggestions for next book",
     startCurrent: "Start reading",
     signInToSuggest: "to suggest a book or vote.",
@@ -150,6 +156,8 @@ const filmClub: ClubConfig = {
     noCurrent: "No movie picked yet — promote a suggestion below.",
     markFinished: "Mark as watched",
     editDetails: "Edit movie details",
+    statusPlanning: "I am planning to attend next meetup",
+    statusFinished: null,
     suggestionsHeading: "Suggestions for next movie",
     startCurrent: "Make next movie",
     signInToSuggest: "to suggest a movie or vote.",
