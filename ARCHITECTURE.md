@@ -23,7 +23,7 @@ Next.js app, never directly to Supabase.
 
 ## Database schema
 
-Nine tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
+Ten tables in the `public` schema of the `wzwuxaqvbsnpwpfagvmg` Supabase
 project, all with row level security on (public read, writes scoped to the
 acting member or admin-only).
 
@@ -93,6 +93,22 @@ promotes a suggestion to current ("Start reading" / "Make next movie"), the
 leading day becomes its `meet_on`; on a tie the admin picks among the
 leaders, and with no suggested days `meet_on` stays empty. Applying a day
 clears the poll. Logic in `src/lib/meetup.ts` and the meetup actions.
+
+### reading_status
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| (book_id, member_id) | uuid, uuid, PK | FK → books and members (cascade) |
+| status | text | `planning` or `finished`; no row means none |
+| updated_at | timestamptz | names are listed in this order |
+
+Each member's status for the current item, shown as checkboxes under
+"Currently reading" with the names under each box. Book club: "reading /
+planning to read and attend" or "finished and attend" (one status, so ticking
+one unticks the other), plus a "Reading progress" ring of finished ÷ (planning
+\+ finished). Movie club: only "planning to attend". Keyed to the book/movie,
+so it starts over when a new one becomes current. Public read; members can
+only set their own row, and only on the current item (RLS).
 
 ### background_covers
 

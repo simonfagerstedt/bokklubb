@@ -120,6 +120,14 @@ const tables = {
     { meetup_date_id: "m2", member_id: OTHER_ID },
     { meetup_date_id: "m3", member_id: OTHER_ID },
   ],
+  // The admin is still reading, the member and Bo have finished, so the
+  // member's own name is highlighted and the progress ring shows 2 of 3.
+  reading_status: [
+    { book_id: "b0", member_id: ADMIN_ID, status: "planning" },
+    { book_id: "b0", member_id: MEMBER_ID, status: "finished" },
+    { book_id: "b0", member_id: OTHER_ID, status: "finished" },
+    { book_id: "b5", member_id: OTHER_ID, status: "finished" },
+  ],
   background_covers: Array.from({ length: 12 }, (_, i) => ({
     id: `c${i}`,
     cover_url: COVER,

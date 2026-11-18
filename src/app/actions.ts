@@ -396,6 +396,39 @@ export async function toggleMeetupVote(meetupDateId: string) {
   revalidatePath("/");
 }
 
+/**
+ * Sets the signed-in member's reading/attendance status for the current
+ * book or movie: "planning", "finished" (book club only) or "none", which
+ * clears it. RLS limits this to your own row on the current item.
+ */
+export async function setReadingStatus(bookId: string, formData: FormData) {
+  const { supabase, userId } = await requireMember();
+  const raw = String(formData.get("status") ?? "");
+  const allowed =
+    club.kind === "book" ? ["planning", "finished", "none"] : ["planning", "none"];
+  if (!allowed.includes(raw)) throw new Error("Unknown status.");
+
+  const { error } =
+    raw === "none"
+      ? await supabase
+          .from("reading_status")
+          .delete()
+          .eq("book_id", bookId)
+          .eq("member_id", userId)
+      : await supabase.from("reading_status").upsert(
+          {
+            book_id: bookId,
+            member_id: userId,
+            status: raw,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "book_id,member_id" },
+        );
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/");
+}
+
 /** Your own suggested date, or any as admin (enforced by RLS). */
 export async function deleteMeetupDate(meetupDateId: string) {
   const { supabase } = await requireMember();
